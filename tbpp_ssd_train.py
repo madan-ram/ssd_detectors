@@ -92,6 +92,7 @@ tf.compat.v1.app.flags.DEFINE_boolean(
     'When restoring a checkpoint would ignore missing variables.')
 
 
+
 # =========================================================================== #
 tf.compat.v1.app.flags.DEFINE_float(
     'use_tpu', -1, 
@@ -102,6 +103,15 @@ FLAGS = tf.compat.v1.app.flags.FLAGS
 # =========================================================================== #
 # Main training routine.
 # =========================================================================== #
+
+def step_decay(epoch):
+   initial_lrate = 0.1
+   drop = 0.5
+   epochs_drop = 10.0
+   lrate = initial_lrate * math.pow(drop,  
+           math.floor((1+epoch)/epochs_drop))
+   return lrate
+
 def main(_):
 
     # TODO: remove below freeze
@@ -122,10 +132,14 @@ def main(_):
         FLAGS.use_tpu = -1
         print('TPU not found')
 
-    # Initialize training
+    # Initialize traininglr_callback = keras.callbacks.LearningRateScheduler(lr_schedule)
     tf.keras.backend.clear_session()
     tf.config.set_soft_device_placement(1)
-    # tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.DEBUG)
+    tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.DEBUG)
+
+    logdir = os.path.join(model_log_dir, datetime.now().strftime("%Y%m%d-%H%M%S"))
+    file_writer = tf.summary.create_file_writer(logdir + "/metrics")
+    file_writer.set_as_default()
 
     strategy = None
     if FLAGS.use_tpu == 1:
@@ -158,11 +172,15 @@ def main(_):
         # if not os.path.exists(checkdir):
         #     os.makedirs(checkdir)
 
+        lr_callback = keras.callbacks.LearningRateScheduler(step_decay)
+        tensorboard_callback = keras.callbacks.TensorBoard(log_dir=logdir)
+        
         optimizer = tf.compat.v1.train.GradientDescentOptimizer(learning_rate=FLAGS.learning_rate)
 
         loss = TBPPFocalLoss(lambda_conf=10000.0, lambda_offsets=1.0)
 
         model.compile(optimizer=optimizer, loss=loss.compute, metrics=loss.metrics)
+
 
         model.fit_generator(
             gen_train.generate(), 
@@ -178,10 +196,11 @@ def main(_):
             validation_steps=gen_val.num_batches, 
             steps_per_epoch=gen_train.num_batches,
             # validation_steps=None, 
-            # validation_freq=1, 
+            # validation_freq=1,
             max_queue_size=10, 
             workers=1,
-            use_multiprocessing=False
+            use_multiprocessing=False,
+            callbacks=[tensorboard_callback, lr_callback],
         )
 
 
