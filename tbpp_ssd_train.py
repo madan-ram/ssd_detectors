@@ -124,6 +124,7 @@ def main(_):
 
     # Initialize training
     tf.keras.backend.clear_session()
+    tf.config.set_soft_device_placement(1)
     # tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.DEBUG)
 
     strategy = None
