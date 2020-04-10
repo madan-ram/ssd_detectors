@@ -571,11 +571,11 @@ class InputGenerator(object):
                     tmp_targets = targets
                     inputs, targets = [], []
                     yield tmp_inputs, tmp_targets
-                    break
                 elif j == len(idxs)-1:
                     # forgett last batch
                     inputs, targets = [], []
                     break
+            break
 
 
 def pad_image(img, aspect_ratio, gt_data=None):
