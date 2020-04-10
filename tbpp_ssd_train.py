@@ -138,7 +138,7 @@ def main(_):
     tf.config.set_soft_device_placement(1)
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.DEBUG)
 
-    logdir = os.path.join(FLAGS.model_log_dir, datetime.now().strftime("%Y%m%d-%H%M%S"))
+    logdir = os.path.join(FLAGS.model_log_dir)
     file_writer = tf.summary.create_file_writer(logdir + "/metrics")
     file_writer.set_as_default()
 
