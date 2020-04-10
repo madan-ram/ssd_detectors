@@ -174,7 +174,7 @@ def main(_):
 
         lr_callback = keras.callbacks.LearningRateScheduler(step_decay)
         tensorboard_callback = keras.callbacks.TensorBoard(log_dir=logdir)
-        
+
         optimizer = tf.compat.v1.train.GradientDescentOptimizer(learning_rate=FLAGS.learning_rate)
 
         loss = TBPPFocalLoss(lambda_conf=10000.0, lambda_offsets=1.0)
@@ -197,9 +197,9 @@ def main(_):
             steps_per_epoch=gen_train.num_batches,
             # validation_steps=None, 
             # validation_freq=1,
-            max_queue_size=10, 
-            workers=1,
-            use_multiprocessing=False,
+            max_queue_size=16, 
+            workers=8,
+            use_multiprocessing=True,
             callbacks=[tensorboard_callback, lr_callback],
         )
 
