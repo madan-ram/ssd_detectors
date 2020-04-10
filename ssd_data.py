@@ -575,7 +575,6 @@ class InputGenerator(object):
                     # forgett last batch
                     inputs, targets = [], []
                     break
-            break
 
 
 def pad_image(img, aspect_ratio, gt_data=None):
