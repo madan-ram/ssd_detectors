@@ -148,6 +148,7 @@ def main(_):
         tf.config.experimental_connect_to_cluster(resolver)
         tf.tpu.experimental.initialize_tpu_system(resolver)
         strategy = tf.distribute.experimental.TPUStrategy(resolver)
+        strategy.experimental_enable_dynamic_batch_size = False
 
     else:
         strategy = tf.distribute.OneDeviceStrategy(device="/gpu:0")
