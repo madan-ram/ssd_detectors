@@ -1,6 +1,6 @@
 """Keras implementation of CRNN."""
 
-import keras.backend as K
+import tensorflow.keras.backend as K
 from keras.models import Model
 from keras.layers import Input, Dense, Activation, Conv1D, Conv2D, MaxPool2D, BatchNormalization, LSTM, GRU
 from keras.layers.wrappers import Bidirectional

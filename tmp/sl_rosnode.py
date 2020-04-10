@@ -35,7 +35,7 @@ class RosVideoTest:
         self.input_shape = input_shape
         self.prior_util = prior_util
         
-        self.graph = tf.get_default_graph()
+        self.graph = tf.compat.v1.get_default_graph()
         self.prev_time = timer()
         
         self.accum_time = 0

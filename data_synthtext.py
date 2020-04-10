@@ -32,21 +32,27 @@ class GTUtility(BaseGTUtility):
         self.data = []
         self.text = []
         for i in range(num_samples):
+
             image_name = data['imnames'][0,i][0]
             text = [s.strip().split() for s in data['txt'][0,i]]
             text = [w for s in text for w in s]
             
+            if not os.path.exists(os.path.join(image_path, image_name)):
+                continue
+
+            img_width, img_height = None, None
             # read image size only when size changes
-            if image_name.split('_')[-1].split('.')[0] == '0':
-                img_width, img_height = get_image_size(os.path.join(image_path, image_name))
+            # if image_name.split('_')[-1].split('.')[0] == '0':
+            img_width, img_height = get_image_size(os.path.join(image_path, image_name))
             
             # data['wordBB'][0,i] has shape (x + y, points, words) = (2, 4, n)
             boxes = data['wordBB'][0,i]
             if len(boxes.shape) == 2:
                 boxes = boxes[:,:,None]
             boxes = boxes.transpose(2,1,0)
-            boxes[:,:,0] /= img_width
-            boxes[:,:,1] /= img_height
+
+            boxes[:,:,0] = boxes[:,:,0]/img_width
+            boxes[:,:,1] = boxes[:,:,1]/img_height
             boxes = boxes.reshape(boxes.shape[0],-1)
             
             # fix some bugs in the SynthText dataset

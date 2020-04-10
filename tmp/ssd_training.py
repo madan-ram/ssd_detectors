@@ -2,7 +2,7 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
-import keras.backend as K
+import tensorflow.keras.backend as K
 import tensorflow as tf
 
 from utils.training import smooth_l1_loss, softmax_loss, focal_loss
@@ -34,10 +34,10 @@ def compute_metrics(class_true, class_pred, conf, top_k=100):
     pos_mask = tf.greater(top_k_class_pred, 0)
     neg_mask = tf.logical_not(pos_mask)
     
-    tp = tf.reduce_sum(tf.cast(tf.logical_and(true_mask, pos_mask), tf.float32))
-    fp = tf.reduce_sum(tf.cast(tf.logical_and(false_mask, pos_mask), tf.float32))
-    fn = tf.reduce_sum(tf.cast(tf.logical_and(false_mask, neg_mask), tf.float32))
-    tn = tf.reduce_sum(tf.cast(tf.logical_and(true_mask, neg_mask), tf.float32))
+    tp = tf.reduce_sum(input_tensor=tf.cast(tf.logical_and(true_mask, pos_mask), tf.float32))
+    fp = tf.reduce_sum(input_tensor=tf.cast(tf.logical_and(false_mask, pos_mask), tf.float32))
+    fn = tf.reduce_sum(input_tensor=tf.cast(tf.logical_and(false_mask, neg_mask), tf.float32))
+    tn = tf.reduce_sum(input_tensor=tf.cast(tf.logical_and(true_mask, neg_mask), tf.float32))
     
     precision = tp / (tp + fp + eps)
     recall = tp / (tp + fn + eps)
@@ -70,9 +70,9 @@ class SSDLoss(object):
         # TODO: negatives_for_hard?
         #       mask based on y_true or y_pred?
         
-        batch_size = tf.shape(y_true)[0]
-        num_priors = tf.shape(y_true)[1]
-        num_classes = tf.shape(y_true)[2] - 4
+        batch_size = tf.shape(input=y_true)[0]
+        num_priors = tf.shape(input=y_true)[1]
+        num_classes = tf.shape(input=y_true)[2] - 4
         eps = K.epsilon()
         
         # confidence loss
@@ -80,19 +80,19 @@ class SSDLoss(object):
         conf_pred = tf.reshape(y_pred[:,:,4:], [-1, num_classes])
         
         conf_loss = softmax_loss(conf_true, conf_pred)
-        class_true = tf.argmax(conf_true, axis=1)
-        class_pred = tf.argmax(conf_pred, axis=1)
-        conf = tf.reduce_max(conf_pred, axis=1)
+        class_true = tf.argmax(input=conf_true, axis=1)
+        class_pred = tf.argmax(input=conf_pred, axis=1)
+        conf = tf.reduce_max(input_tensor=conf_pred, axis=1)
         
         neg_mask_float = conf_true[:,0]
         neg_mask = tf.cast(neg_mask_float, tf.bool)
         pos_mask = tf.logical_not(neg_mask)
         pos_mask_float = tf.cast(pos_mask, tf.float32)
-        num_total = tf.cast(tf.shape(conf_true)[0], tf.float32)
-        num_pos = tf.reduce_sum(pos_mask_float)
+        num_total = tf.cast(tf.shape(input=conf_true)[0], tf.float32)
+        num_pos = tf.reduce_sum(input_tensor=pos_mask_float)
         num_neg = num_total - num_pos
         
-        pos_conf_loss = tf.reduce_sum(conf_loss * pos_mask_float)
+        pos_conf_loss = tf.reduce_sum(input_tensor=conf_loss * pos_mask_float)
         pos_conf_loss = pos_conf_loss / (num_pos + eps)
         
         ## take only false positives for hard negative mining
@@ -102,12 +102,12 @@ class SSDLoss(object):
         #neg_conf_loss = tf.boolean_mask(conf_loss, false_pos_mask)
         
         num_neg = tf.minimum(self.neg_pos_ratio * num_pos, num_neg)
-        neg_conf_loss = tf.boolean_mask(conf_loss, neg_mask)
+        neg_conf_loss = tf.boolean_mask(tensor=conf_loss, mask=neg_mask)
         neg_conf_loss = neg_conf_loss / (num_neg + eps)
         
         vals, idxs = tf.nn.top_k(neg_conf_loss, k=tf.cast(num_neg, tf.int32))
         #neg_conf_loss = tf.reduce_sum(tf.gather(neg_conf_loss, idxs))
-        neg_conf_loss = tf.reduce_sum(vals)
+        neg_conf_loss = tf.reduce_sum(input_tensor=vals)
         
         conf_loss = pos_conf_loss + neg_conf_loss
         
@@ -116,7 +116,7 @@ class SSDLoss(object):
         loc_pred = tf.reshape(y_pred[:,:,0:4], [-1, 4])
         
         loc_loss = smooth_l1_loss(loc_true, loc_pred)
-        pos_loc_loss = tf.reduce_sum(loc_loss * pos_mask_float) # only for positives
+        pos_loc_loss = tf.reduce_sum(input_tensor=loc_loss * pos_mask_float) # only for positives
         loc_loss = pos_loc_loss / (num_pos + eps)
         
         # total loss
@@ -155,29 +155,29 @@ class SSDFocalLoss(object):
     def compute(self, y_true, y_pred):
         # y.shape (batches, priors, 4 x bbox_offset + n x class_label)
         
-        batch_size = tf.shape(y_true)[0]
-        num_priors = tf.shape(y_true)[1]
-        num_classes = tf.shape(y_true)[2] - 4
+        batch_size = tf.shape(input=y_true)[0]
+        num_priors = tf.shape(input=y_true)[1]
+        num_classes = tf.shape(input=y_true)[2] - 4
         eps = K.epsilon()
         
         # confidence loss
         conf_true = tf.reshape(y_true[:,:,4:], [-1, num_classes])
         conf_pred = tf.reshape(y_pred[:,:,4:], [-1, num_classes])
         
-        class_true = tf.argmax(conf_true, axis=1)
-        class_pred = tf.argmax(conf_pred, axis=1)
-        conf = tf.reduce_max(conf_pred, axis=1)
+        class_true = tf.argmax(input=conf_true, axis=1)
+        class_pred = tf.argmax(input=conf_pred, axis=1)
+        conf = tf.reduce_max(input_tensor=conf_pred, axis=1)
         
         neg_mask_float = conf_true[:,0]
         neg_mask = tf.cast(neg_mask_float, tf.bool)
         pos_mask = tf.logical_not(neg_mask)
         pos_mask_float = tf.cast(pos_mask, tf.float32)
-        num_total = tf.cast(tf.shape(conf_true)[0], tf.float32)
-        num_pos = tf.reduce_sum(pos_mask_float)
+        num_total = tf.cast(tf.shape(input=conf_true)[0], tf.float32)
+        num_pos = tf.reduce_sum(input_tensor=pos_mask_float)
         num_neg = num_total - num_pos
         
         conf_loss = focal_loss(conf_true, conf_pred, alpha=self.class_weights)
-        conf_loss = tf.reduce_sum(conf_loss)
+        conf_loss = tf.reduce_sum(input_tensor=conf_loss)
         
         conf_loss = conf_loss / (num_total + eps)
         
@@ -186,7 +186,7 @@ class SSDFocalLoss(object):
         loc_pred = tf.reshape(y_pred[:,:,0:4], [-1, 4])
         
         loc_loss = smooth_l1_loss(loc_true, loc_pred)
-        pos_loc_loss = tf.reduce_sum(loc_loss * pos_mask_float) # only for positive ground truth
+        pos_loc_loss = tf.reduce_sum(input_tensor=loc_loss * pos_mask_float) # only for positive ground truth
         
         loc_loss = pos_loc_loss / (num_pos + eps)
         

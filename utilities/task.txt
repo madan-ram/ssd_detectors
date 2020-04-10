@@ -1,0 +1,16 @@
+1. Learn how each commponent can be modified, clear about the concepts. (Done)
+2. Print every leayer, with name, with, theoretical receptive field. (Done)
+3. Change layer to accomodate dilated layer, its and filed of view. (In-Progress)
+4. Get data from Generation script from Ridhima. (Hold)
+5. Check bb prediction of each block.
+
+6. Optimize aspect ratio and test model? (Done)
+6. Why resnet and how resnet works? (In-progress)
+7. Write the model observation report for all v7 model.
+8. random genration of model using plug and play components. Genetic modeling for model development.
+9. Create program to evaluate the model and generate report
+	1. Classification accuracy.
+	2. Background noise accuracy.
+	3. Size distribution of predicted bounding box per prediction layer
+
+Generate various data agumented image as generate in train, and find the each block effective prediction size and per layer 

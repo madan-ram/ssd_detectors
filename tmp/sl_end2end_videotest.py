@@ -26,7 +26,7 @@ if __name__ == '__main__':
     
     sl_graph = tf.Graph()
     with sl_graph.as_default():
-        sl_session = tf.Session()
+        sl_session = tf.compat.v1.Session()
         with sl_session.as_default():
             sl_model = Model(input_shape)
             prior_util = PriorUtil(sl_model)
@@ -39,7 +39,7 @@ if __name__ == '__main__':
     
     crnn_graph = tf.Graph()
     with crnn_graph.as_default():
-        crnn_session = tf.Session()
+        crnn_session = tf.compat.v1.Session()
         with crnn_session.as_default():
             crnn_model = CRNN((input_width, input_height, 1), len(alphabet), prediction_only=True, gru=True)
             crnn_model.load_weights(weights_path, by_name=True)

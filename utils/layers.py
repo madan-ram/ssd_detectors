@@ -1,15 +1,14 @@
 """Some special pupropse layers for SSD."""
 
-import keras.backend as K
-from keras import initializers
-from keras.engine.topology import InputSpec
-from keras.engine.topology import Layer
+import tensorflow.keras.backend as K
+from tensorflow.keras.layers import Layer
+from tensorflow.keras import initializers
 import numpy as np
 import tensorflow as tf
 
 
 def _to_tensor(x, dtype):
-    x = tf.convert_to_tensor(x)
+    x = tf.convert_to_tensor(value=x)
     if x.dtype != dtype:
         x = tf.cast(x, dtype)
     return x
