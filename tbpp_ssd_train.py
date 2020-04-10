@@ -22,6 +22,7 @@ from tbpp_utils import PriorUtil
 from ssd_data import InputGenerator
 from tbpp_training import TBPPFocalLoss
 from data_synthtext import GTUtility
+from datetime import datetime
 
 # =========================================================================== #
 # SSD Network flags.
