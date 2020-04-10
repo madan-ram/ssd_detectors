@@ -173,8 +173,8 @@ def main(_):
         # if not os.path.exists(checkdir):
         #     os.makedirs(checkdir)
 
-        lr_callback = keras.callbacks.LearningRateScheduler(step_decay)
-        tensorboard_callback = keras.callbacks.TensorBoard(log_dir=logdir)
+        lr_callback = tf.keras.callbacks.LearningRateScheduler(step_decay)
+        tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=logdir)
 
         optimizer = tf.compat.v1.train.GradientDescentOptimizer(learning_rate=FLAGS.learning_rate)
 
