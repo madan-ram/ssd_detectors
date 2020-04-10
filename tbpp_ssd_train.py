@@ -175,7 +175,7 @@ def main(_):
         lr_callback = tf.keras.callbacks.LearningRateScheduler(step_decay)
         tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=logdir)
 
-        optimizer = optimizers.SGD(lr=FLAGS.learning_rate, decay=1e-6, momentum=0.0, nesterov=False)
+        optimizer = tf.keras.optimizers.SGD(lr=FLAGS.learning_rate, decay=1e-6, momentum=0.0, nesterov=False)
 
         loss = TBPPFocalLoss(lambda_conf=10000.0, lambda_offsets=1.0)
 
