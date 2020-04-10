@@ -129,8 +129,8 @@ def main(_):
     strategy = None
     if FLAGS.use_tpu == 1:
         resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu=TPU_ADDRESS)
-        tf.contrib.distribute.initialize_tpu_system(resolver)
-        strategy = tf.contrib.distribute.TPUStrategy(resolver)
+        tf.tpu.experimental.initialize_tpu_system(resolver)
+        strategy = tf.distribute.experimental.TPUStrategy(resolver)
 
     else:
         strategy = tf.distribute.OneDeviceStrategy(device="/gpu:0")
