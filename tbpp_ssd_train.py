@@ -133,7 +133,6 @@ def main(_):
         FLAGS.use_tpu = -1
         print('TPU not found')
 
-    # Initialize traininglr_callback = keras.callbacks.LearningRateScheduler(lr_schedule)
     tf.keras.backend.clear_session()
     tf.config.set_soft_device_placement(1)
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.DEBUG)
@@ -176,7 +175,7 @@ def main(_):
         lr_callback = tf.keras.callbacks.LearningRateScheduler(step_decay)
         tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=logdir)
 
-        optimizer = tf.compat.v1.train.GradientDescentOptimizer(learning_rate=FLAGS.learning_rate)
+        optimizer = optimizers.SGD(lr=FLAGS.learning_rate, decay=1e-6, momentum=0.0, nesterov=False)
 
         loss = TBPPFocalLoss(lambda_conf=10000.0, lambda_offsets=1.0)
 
