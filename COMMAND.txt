@@ -1,0 +1,12 @@
+!python tbpp_ssd_train.py \
+	--model_log_dir=./logs/ \
+	--learning_rate=0.005 \
+	--dataset_split_percentage=0.8 \
+	--batch_size=32 \
+	--num_classes=2 \
+	--max_number_of_epoch=100 \
+	--model_name=SSD512_resnet \
+	--preprocess_name=SSD512_resnet \
+	--dataset_name=avt_2020_v1 \
+	--dataset_dir=/Users/madanram/SoulOfCoder/SSD-Tensorflow-V2/datasets/VOC2012/tf/ \
+	--image_size=512 

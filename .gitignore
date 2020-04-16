@@ -99,6 +99,9 @@ ENV/
 # Rope project settings
 .ropeproject
 
-
-
 data/SynthText
+logs/
+datasets/
+
+
+gt_no_charbb.mat

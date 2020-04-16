@@ -16,8 +16,6 @@
 """
 import tensorflow as tf
 
-from tensorflow.contrib.framework.python.ops import variables as contrib_variables
-from tensorflow.contrib.metrics.python.ops import set_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor

@@ -19,12 +19,14 @@ import functools
 import tensorflow as tf
 
 from models import tbpp_model
-
+from models import ssd_model
 
 model_fn_map = {
     'TBPP512_dense_separable': tbpp_model.TBPP512_dense_separable,
     'DSODTBPP512': tbpp_model.DSODTBPP512,
-    'TBPP512': tbpp_model.TBPP512
+    'TBPP512': tbpp_model.TBPP512,
+    'SSD512_resnet': ssd_model.SSD512_resnet,
+    'SSD512':ssd_model.SSD512
 }
 
 
@@ -75,4 +77,4 @@ def get_model(name, num_classes, input_shape=(512, 512, 3), softmax=True):
 
     model_fn = model_fn_map[name]
 
-    return model_fn(num_classes, input_shape=(512, 512, 3), softmax=True)
+    return model_fn(num_classes=num_classes, input_shape=input_shape, softmax=True)

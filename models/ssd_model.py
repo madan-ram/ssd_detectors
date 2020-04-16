@@ -311,7 +311,7 @@ def DSOD512(input_shape=(512, 512, 3), num_classes=21, activation='relu', softma
 SSD512_dense = DSOD512
 
 
-def SSD512_resnet(input_shape=(512, 512, 3), num_classes=21, softmax=True):
+def SSD512_resnet(num_classes, input_shape=(512, 512, 3), softmax=True):
     
     # TODO: it does not converge!
     

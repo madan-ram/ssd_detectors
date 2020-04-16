@@ -17,7 +17,6 @@
 import tensorflow as tf
 import numpy as np
 
-from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops

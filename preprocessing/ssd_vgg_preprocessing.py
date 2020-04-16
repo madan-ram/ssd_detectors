@@ -27,8 +27,6 @@ from preprocessing import tf_image
 
 from notebooks.visualization import plt_bboxes
 
-slim = tf.contrib.slim
-
 # Resizing strategies.
 Resize = IntEnum('Resize', ('NONE',                # Nothing!
                             'CENTRAL_CROP',        # Crop (and pad if necessary).
@@ -99,7 +97,7 @@ def tf_summary_image(image, bboxes, name='image', unwhitened=False):
         image = tf_image_unwhitened(image)
     image = tf.expand_dims(image, 0)
     bboxes = tf.expand_dims(bboxes, 0)
-    image_with_box = tf.image.draw_bounding_boxes(image, bboxes)
+    image_with_box = tf.compat.v1.image.draw_bounding_boxes(image, bboxes)
     tf.compat.v1.summary.image(name, image_with_box)
 
 
@@ -242,7 +240,7 @@ def distorted_bounding_box_crop(image,
 
 
 def preprocess_for_train(image, labels, bboxes,
-                         out_shape, data_format='NHWC',
+                         out_shape,
                          scope='ssd_preprocessing_train', resize=Resize.PAD_AND_RESIZE):
     """Preprocesses the given image for training.
 
@@ -269,7 +267,6 @@ def preprocess_for_train(image, labels, bboxes,
         if image.dtype != tf.float32:
             image = tf.image.convert_image_dtype(image, dtype=tf.float32)
         tf_summary_image(image, bboxes, 'image_with_bboxes')
-
 
         # dst_image, labels, bboxes, distort_bbox = \
         #     distorted_bounding_box_crop(image, labels, bboxes,
@@ -319,14 +316,11 @@ def preprocess_for_train(image, labels, bboxes,
         image = dst_image * 255.
         # image = tf_image_whitened(image, [_R_MEAN, _G_MEAN, _B_MEAN])
 
-        # Image data format.
-        if data_format == 'NCHW':
-            image = tf.transpose(a=image, perm=(2, 0, 1))
         return image, labels, bboxes
 
 
 def preprocess_for_eval(image, labels, bboxes,
-                        out_shape=EVAL_SIZE, data_format='NHWC',
+                        out_shape=EVAL_SIZE,
                         difficults=None, resize=Resize.PAD_AND_RESIZE,
                         scope='ssd_preprocessing_train'):
     """Preprocess an image for evaluation.
@@ -340,6 +334,7 @@ def preprocess_for_eval(image, labels, bboxes,
         A preprocessed image.
     """
     with tf.compat.v1.name_scope(scope):
+        print(image.get_shape(), '===============================')
         if image.get_shape().ndims != 3:
             raise ValueError('Input must be of size [height, width, C>0]')
 
@@ -388,17 +383,14 @@ def preprocess_for_eval(image, labels, bboxes,
             mask = tf.logical_not(tf.cast(difficults, tf.bool))
             labels = tf.boolean_mask(tensor=labels, mask=mask)
             bboxes = tf.boolean_mask(tensor=bboxes, mask=mask)
-        # Image data format.
-        if data_format == 'NCHW':
-            image = tf.transpose(a=image, perm=(2, 0, 1))
-        return image, labels, bboxes, bbox_img
+
+        return image, labels, bboxes
 
 
 def preprocess_image(image,
                      labels,
                      bboxes,
                      out_shape,
-                     data_format,
                      resize,
                      is_training=False,
                      **kwargs):
@@ -423,11 +415,9 @@ def preprocess_image(image,
     """
     if is_training:
         return preprocess_for_train(image, labels, bboxes,
-                                    out_shape=out_shape,
-                                    data_format=data_format, resize=resize)
+                                    out_shape=out_shape, resize=resize)
     else:
         return preprocess_for_eval(image, labels, bboxes,
                                    out_shape=out_shape,
-                                   data_format=data_format,
                                    resize=resize,
                                    **kwargs)

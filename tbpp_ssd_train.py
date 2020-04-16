@@ -19,12 +19,24 @@ from models import models_factory
 import os
 
 import math
-from tbpp_utils import PriorUtil
-from ssd_data import InputGenerator
-from tbpp_training import TBPPFocalLoss
-from data_synthtext import GTUtility
+from ssd_trainer import SSDFocalLoss
+# , compute_metrics
 from datetime import datetime
+from tensorflow.python.framework.ops import disable_eager_execution
+from preprocessing.preprocessing_factory import get_preprocessing
+from datasets.dataset_factory import get_dataset
+from datasets import ssd_utils
 
+# import matplotlib.pyplot as plt
+# import numpy as np
+# import cv2
+
+# Configure
+tf.keras.backend.clear_session()
+tf.config.set_soft_device_placement(1)
+tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.DEBUG)
+
+print(tf.executing_eagerly())
 # =========================================================================== #
 # SSD Network flags.
 # =========================================================================== #
@@ -40,6 +52,14 @@ tf.compat.v1.app.flags.DEFINE_float(
 # =========================================================================== #
 tf.compat.v1.app.flags.DEFINE_string(
     'model_log_dir', '/tmp/tfmodel/',
+    'Directory where checkpoints and event logs are written to.')
+
+tf.compat.v1.app.flags.DEFINE_string(
+    'dataset_dir', '/tmp/tf/',
+    'Directory where tfrecord placed.')
+
+tf.compat.v1.app.flags.DEFINE_string(
+    'dataset_name', 'avt_2020_v1',
     'Directory where checkpoints and event logs are written to.')
 
 # =========================================================================== #
@@ -61,14 +81,14 @@ tf.compat.v1.app.flags.DEFINE_integer(
 # =========================================================================== #
 tf.compat.v1.app.flags.DEFINE_integer(
     'batch_size', 32, 'The number of samples in each batch.')
-tf.compat.v1.app.flags.DEFINE_string(
-    'dataset_name', 'imagenet', 'The name of the dataset to load.')
 tf.compat.v1.app.flags.DEFINE_integer(
     'num_classes', 2, 'Number of classes to use in the dataset.')
 tf.compat.v1.app.flags.DEFINE_integer('max_number_of_steps', None,
                             'The maximum number of training steps.')
 tf.compat.v1.app.flags.DEFINE_string(
-    'model_name', 'TBPP512', 'The name of the architecture to train.')
+    'model_name', 'SSD512_resnet', 'The name of the architecture to train.')
+tf.compat.v1.app.flags.DEFINE_string(
+    'preprocess_name', 'SSD512_resnet', 'The name of the processing pipeline to train.')
 # =========================================================================== #
 tf.compat.v1.app.flags.DEFINE_integer(
     'image_size', None, 'Image size')
@@ -114,6 +134,9 @@ def step_decay(epoch):
            math.floor((1+epoch)/epochs_drop))
    return lrate
 
+def get_train_iter(tfrecord):
+    return (tfrecord['input'], tfrecord['targets'])
+
 def main(_):
 
     # TODO: remove below freeze
@@ -124,6 +147,9 @@ def main(_):
     # Load config and paramaters
     softmax = True
     input_shape = (FLAGS.image_size, FLAGS.image_size, 3)
+    # Get data
+    tf_ref_path = os.path.join(FLAGS.dataset_dir, FLAGS.dataset_name+'*.tfrecord')
+
     TPU_ADDRESS = None
     try:
         device_name = os.environ['COLAB_TPU_ADDR']
@@ -134,14 +160,11 @@ def main(_):
         FLAGS.use_tpu = -1
         print('TPU not found')
 
-    tf.keras.backend.clear_session()
-    tf.config.set_soft_device_placement(1)
-    tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.DEBUG)
-
     logdir = os.path.join(FLAGS.model_log_dir)
     file_writer = tf.summary.create_file_writer(logdir + "/metrics")
     file_writer.set_as_default()
 
+    gpus = tf.config.experimental.list_logical_devices("GPU")
     strategy = None
     if FLAGS.use_tpu == 1:
         resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu=TPU_ADDRESS)
@@ -150,60 +173,64 @@ def main(_):
         strategy = tf.distribute.experimental.TPUStrategy(resolver)
         strategy.experimental_enable_dynamic_batch_size = False
 
-    else:
-        strategy = tf.distribute.OneDeviceStrategy(device="/gpu:0")
+    elif len(gpus) > 1: # multiple GPUs in one VM
+        strategy = tf.distribute.MirroredStrategy()
 
-    with strategy.scope(), tf.Graph().as_default():
-        
+    else: # default strategy that works on CPU and single GPU
+        strategy = tf.distribute.get_strategy()
+
+    with strategy.scope():
         # Get the SSD network and its anchors.
         model = models_factory.get_model(FLAGS.model_name, FLAGS.num_classes, input_shape=input_shape, softmax=softmax)
         # Get model summary
         model.summary()
-
-        # Get data
-        gt_util = GTUtility('data/SynthText/', polygon=True)
-
-        prior_util = PriorUtil(model)
-        gt_util_train, gt_util_val = gt_util.split(FLAGS.dataset_split_percentage)
-
-        gen_train = InputGenerator(gt_util_train, prior_util, FLAGS.batch_size, model.image_size)
-        gen_val = InputGenerator(gt_util_val, prior_util, FLAGS.batch_size, model.image_size)
-
-        # # Create checkpoint dir if does not exists
-        # checkdir = os.path.join(FLAGS.model_log_dir, 'checkpoints/')
-        # if not os.path.exists(checkdir):
-        #     os.makedirs(checkdir)
 
         lr_callback = tf.keras.callbacks.LearningRateScheduler(step_decay)
         tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=logdir)
 
         optimizer = tf.keras.optimizers.SGD(lr=FLAGS.learning_rate, decay=1e-6, momentum=0.0, nesterov=False)
 
-        loss = TBPPFocalLoss(lambda_conf=10000.0, lambda_offsets=1.0)
-
+        loss = SSDFocalLoss(lambda_conf=10000.0, lambda_offsets=1.0)
         model.compile(optimizer=optimizer, loss=loss.compute, metrics=loss.metrics)
 
+        print("REPLICAS: ", strategy.num_replicas_in_sync)
 
-        model.fit_generator(
-            gen_train.generate(), 
-            # batch_size=FLAGS.batch_size,
+        feat_shapes = [layer.get_shape().as_list() for layer in model.source_layers]
+        anchor_ratios = model.aspect_ratios
+        anchor_sizes = model.minmax_sizes
+        anchor_steps = model.steps
+        special_ssd_boxes = model.special_ssd_boxes
+        anchor_offset = 0.5
+
+        ssd_anchors = ssd_utils.anchors(
+            input_shape, 
+            feat_shapes,
+            anchor_sizes,
+            anchor_ratios,
+            anchor_steps, 
+            anchor_offset
+        )
+
+        preprocess_fn = get_preprocessing(FLAGS.preprocess_name, is_training=True)
+        train_dataset = get_dataset(FLAGS.dataset_name, tf_ref_path, ssd_anchors, FLAGS.num_classes, preprocess_fn=preprocess_fn, preprocess_fn_args={'out_shape': input_shape})
+
+        train_dataset = train_dataset.map(get_train_iter, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+        model.fit(
+            train_dataset,
             epochs=epochs,
             verbose=1, 
-            # callbacks=None,
             shuffle=True,
-            # class_weight=None,
-            # sample_weight=None, 
-            initial_epoch=0, 
-            validation_data=gen_val.generate(), 
-            validation_steps=gen_val.num_batches, 
-            steps_per_epoch=gen_train.num_batches,
-            # validation_steps=None, 
-            # validation_freq=1,
-            max_queue_size=16, 
-            workers=8,
-            use_multiprocessing=True,
+            initial_epoch=0,
+            # validation_data=gen_val.generate(), 
+            # validation_steps=gen_val.num_batches, 
+            steps_per_epoch=FLAGS.batch_size*200,
+            max_queue_size=1, 
+            workers=1,
+            use_multiprocessing=False,
             callbacks=[tensorboard_callback, lr_callback],
         )
+
+
 
 
 if __name__ == '__main__':

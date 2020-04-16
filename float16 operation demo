@@ -1,0 +1,28 @@
+EPOCHS = 12
+IMAGE_SIZE = [331, 331]
+
+FLOWERS_DATASETS = { # available image sizes
+    192: 'gs://flowers-public/tfrecords-jpeg-192x192-2/*.tfrec',
+    224: 'gs://flowers-public/tfrecords-jpeg-224x224/*.tfrec',
+    331: 'gs://flowers-public/tfrecords-jpeg-331x331/*.tfrec',
+    512: 'gs://flowers-public/tfrecords-jpeg-512x512/*.tfrec'
+}
+CLASSES = ['daisy', 'dandelion', 'roses', 'sunflowers', 'tulips'] # do not change, maps to the labels in the data (folder names)
+assert IMAGE_SIZE[0] == IMAGE_SIZE[1], "only square images are supported"
+assert IMAGE_SIZE[0] in FLOWERS_DATASETS, "this image size is not supported"
+
+
+# mixed precision
+# On TPU, bfloat16/float32 mixed precision is automatically used in TPU computations.
+# Enabling it in Keras also stores relevant variables in bfloat16 format (memory optimization).
+# On GPU, specifically V100, mixed precision must be enabled for hardware TensorCores to be used.
+# XLA compilation must be enabled for this to work. (On TPU, XLA compilation is the default)
+MIXED_PRECISION = False
+if MIXED_PRECISION:
+    if tpu: 
+        policy = tf.keras.mixed_precision.experimental.Policy('mixed_bfloat16')
+    else: #
+        policy = tf.keras.mixed_precision.experimental.Policy('mixed_float16')
+        tf.config.optimizer.set_jit(True) # XLA compilation
+    tf.keras.mixed_precision.experimental.set_policy(policy)
+    print('Mixed precision enabled')
