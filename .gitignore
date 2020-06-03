@@ -101,7 +101,6 @@ ENV/
 
 data/SynthText
 logs/
-datasets/
 
 
 gt_no_charbb.mat

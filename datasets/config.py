@@ -1,0 +1,47 @@
+
+whitelist_charset = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '@', '$', '&', '*', '#', '%', '-', ',', '.', '/', '(', ')', '+']
+onehot_whitelist_charset = ['0', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '@', '$', '&', '*', '#', '%', '-', ',', '.', '/', '(', ')', '+']
+tesseract_config = '-c tessedit_char_whitelist="'+''.join(whitelist_charset)+'" --dpi 300 --psm 12 --oem 1'
+
+whitelist_with_fields_label = [
+	"O",
+	"PO Number_value",
+	"PO Date_value",
+	"Purchaser name_value",
+	"Vendor name_value",
+	"Tax CGST_value",
+	"Tax SGST_value",
+	"Tax IGST_value",
+	"Tax Excise_value",
+	"Total amount_value",
+	"PO Created By_value",
+	"GRN Number_value",
+	"GRN Date_value",
+	"Vendor name_value",
+	"Invoice Number_value",
+	"Invoice Date_value",
+	"BOL Number_value",
+	"Currency_value",
+	# "PO Number_field",
+	# "PO Date_field",
+	# "Tax CGST_field",
+	# "Tax SGST_field",
+	# "Tax IGST_field",
+	# "Tax Excise_field",
+	# "Tax Total_field Tax",
+	# "Total amount_field",
+	# "PO Created By_field",
+	# "GRN Number_field",
+	# "GRN Date_field",
+	# "Invoice Date_field",
+	# "Invoice Number_field",
+	# "BOL Number_field",
+	"Table_Description column-header",
+	"Table_Quantity column-header",
+	"Table_Rate column-header",
+	"Table_Amount column-header",
+	"Table_Description column-row",
+	"Table_Quantity column-row",
+	"Table_Rate column-row",
+	"Table_Amount column-row"
+]

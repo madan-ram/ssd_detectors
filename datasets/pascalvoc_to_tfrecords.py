@@ -49,20 +49,13 @@ for each example.
 import os
 import sys
 import random
-
 import numpy as np
 import tensorflow as tf
-
 import xml.etree.ElementTree as ET
-
 from datasets.dataset_utils import int64_feature, float_feature, bytes_feature
-from datasets.avt_2020_v1 import VOC_LABELS
+from pascalvoc_to_tfrecords import Parser
 
-# Original dataset organisation.
-DIRECTORY_ANNOTATIONS = 'Annotations/'
-DIRECTORY_IMAGES = 'JPEGImages/'
-
-# TFRecords convertion parameters.
+# # TFRecords convertion parameters.
 RANDOM_SEED = 4242
 SAMPLES_PER_FILES = 200
 
@@ -75,79 +68,6 @@ def above_1_to_1(val):
     if val>1.0:
         return 1.0
     return val
-    
-def _process_image(directory, name, label_id_map=VOC_LABELS):
-    """Process a image and annotation file.
-
-    Args:
-      filename: string, path to an image file e.g., '/path/to/example.JPG'.
-      coder: instance of ImageCoder to provide TensorFlow image coding utils.
-    Returns:
-      image_buffer: string, JPEG encoding of RGB image.
-      height: integer, image height in pixels.
-      width: integer, image width in pixels.
-    """
-    # Read the image file.
-    filename = directory + DIRECTORY_IMAGES + name + '.jpg'
-    image_data = tf.compat.v1.gfile.FastGFile(filename, 'rb').read()
-
-    # Read the XML annotation file.
-    filename = os.path.join(directory, DIRECTORY_ANNOTATIONS, name + '.xml')
-    tree = ET.parse(filename)
-    root = tree.getroot()
-
-    # Image shape.
-    size = root.find('size')
-    shape = [int(size.find('height').text),
-             int(size.find('width').text),
-             int(size.find('depth').text)]
-    # Find annotations.
-    bboxes = []
-    labels = []
-    labels_text = []
-    difficult = []
-    truncated = []
-    for obj in root.findall('object'):
-        label = obj.find('name').text
-        # Skip unlabelled object
-        if label == 'unlabelled' or label is None:
-            attr_label = None
-            for attr in obj.find('attributes').findall('attribute'):
-                attr_label = attr.find('key').text
-                break
-            if attr_label is not None and attr_label != 'unlabelled':
-                label = attr_label
-            else:
-                continue
-
-        # HACK: Remove it for correct output
-        # labels.append(label)
-        # label = label+1
-        try:
-            labels.append(int(label_id_map[label][0]))
-        except KeyError as ke:
-            print('SKilling label {} in file_id {}'.format(label, name))
-
-        labels_text.append(str(label).encode('ascii'))
-
-        if obj.find('difficult'):
-            difficult.append(int(obj.find('difficult').text))
-        else:
-            difficult.append(0)
-        if obj.find('truncated'):
-            truncated.append(int(obj.find('truncated').text))
-        else:
-            truncated.append(0)
-
-        bbox = obj.find('bndbox')
-        bboxes.append(tuple(map(above_1_to_1, map(negative_to_zero, [float(bbox.find('ymin').text) / shape[0],
-                       float(bbox.find('xmin').text) / shape[1],
-                       float(bbox.find('ymax').text) / shape[0],
-                       float(bbox.find('xmax').text) / shape[1]
-                       ]))))
-
-    return image_data, shape, bboxes, labels, labels_text, difficult, truncated
-
 
 def _convert_to_example(image_data, labels, labels_text, bboxes, shape,
                         difficult, truncated):
@@ -193,69 +113,70 @@ def _convert_to_example(image_data, labels, labels_text, bboxes, shape,
     return example
 
 
-# def _add_to_tfrecord(dataset_dir, name, tfrecord_writer):
-#     """Loads data from image and annotations files and add them to a TFRecord.
-
-#     Args:
-#       dataset_dir: Dataset directory;
-#       name: Image name to add to the TFRecord;
-#       tfrecord_writer: The TFRecord writer to use for writing.
-#     """
-#     image_data, shape, bboxes, labels, labels_text, difficult, truncated = \
-#         _process_image(dataset_dir, name)
-#     example = _convert_to_example(image_data, labels, labels_text,
-#                                   bboxes, shape, difficult, truncated)
-#     tfrecord_writer.write(example.SerializeToString())
-
-
 def _get_output_filename(output_dir, name, idx):
     return '%s/%s_%03d.tfrecord' % (output_dir, name, idx)
 
 
-def run(dataset_dir, output_dir, name='voc_train', shuffling=False):
+def run(xml_file_list, output_dir, name='voc_train', shuffling=False):
     """Runs the conversion operation.
 
     Args:
       dataset_dir: The dataset directory where the dataset is stored.
       output_dir: Output directory.
     """
-    if not tf.io.gfile.exists(dataset_dir):
-        tf.io.gfile.makedirs(dataset_dir)
+    label_id_map = {label: idx for idx, label in enumerate(config.whitelist_with_fields_label)}
 
-    # Dataset filenames, and shuffling.
-    path = os.path.join(dataset_dir, DIRECTORY_ANNOTATIONS)
-    filenames = sorted(os.listdir(path))
-    if shuffling:
-        random.seed(RANDOM_SEED)
-        random.shuffle(filenames)
-
-    # Process dataset files.
-    count_num_exp = 0
-    i = 0
     fidx = 0
-    while i < len(filenames):
-        # Open new TFRecord file.
-        tf_filename = _get_output_filename(output_dir, name, fidx)
-        with tf.io.TFRecordWriter(tf_filename) as tfrecord_writer:
-            j = 0
-            while i < len(filenames) and j < SAMPLES_PER_FILES:
-                sys.stdout.write('\r>> Converting image %d/%d' % (i+1, len(filenames)))
-                sys.stdout.flush()
+    tf_filename = _get_output_filename(output_dir, name, fidx)
+    tfrecord_writer = tf.io.TFRecordWriter(tf_filename)
+    count_num_exp = 0
+    for idx, xml_file_path in enumerate(xml_file_list):
+        sys.stdout.write('\r>> Converting image %d/%d' % (idx+1, len(xml_file_list)))
+        sys.stdout.flush()
 
-                filename = filenames[i]
-                img_name = filename[:-4]
-
-                image_data, shape, bboxes, labels, labels_text, difficult, truncated = _process_image(dataset_dir, img_name)
-                example = _convert_to_example(image_data, labels, labels_text,
-                                              bboxes, shape, difficult, truncated)
-                tfrecord_writer.write(example.SerializeToString())
-                count_num_exp += 1
-                i += 1
-                j += 1
+        if (idx+1)%SAMPLES_PER_FILES == 0:
+            # Close previous writer and open new writer
+            tfrecord_writer.close()
             fidx += 1
 
+            tf_filename = _get_output_filename(output_dir, name, fidx)
+            tfrecord_writer = tf.io.TFRecordWriter(tf_filename)
+
+        parser_genr = Parser(xml_file_path, ignore_label_lst=['unlabelled'])
+        image_path = parser_genr.img_path
+        image_width = parser_genr.img_width
+        image_height = parser_genr.img_height
+        
+        image_data = tf.compat.v1.gfile.FastGFile(image_path, 'rb').read()
+
+        assert image_data.shape[0] != image_height or image_data.shape[1] != image_width, "Image and xml size mismatch for image path->{}".format(image_path)
+
+        shape = [
+            image_height,
+            image_width,
+            image_data.shape[2]
+        ]
+
+        difficult = []
+        truncated = []
+        labels = []
+        bboxes = []
+        labels_text = []
+        for xml_info in parser_genr.generator():
+            label_name, xmin, ymin, xmax, ymax, text, _, _ = xml_info
+
+            label_id = label_id_map.get(label_name, None)
+
+            if label_id == None:
+                continue
+
+            labels.append(label_id)
+            labels_text.append(label_name)
+            bboxes.append((ymin, xmin, ymax, xmax))
+
+
+        example = _convert_to_example(image_data, labels, labels_text, bboxes, shape, difficult, truncated)
+        tfrecord_writer.write(example.SerializeToString())
+        count_num_exp += 1
+
     print("\nNumer of samples %d"%count_num_exp)
-    # Finally, write the labels file:
-    # labels_to_class_names = dict(zip(range(len(_CLASS_NAMES)), _CLASS_NAMES))
-    # dataset_utils.write_label_file(labels_to_class_names, dataset_dir)
-    print('Finished converting the Pascal VOC dataset!')
