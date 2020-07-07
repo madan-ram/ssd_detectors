@@ -66,6 +66,7 @@ def ssd_anchor_one_layer(img_shape,
     # Compute relative height and width.
     # Tries to follow the original implementation of SSD for the order.
     num_anchors = len(sizes) + len(ratios)
+    print(num_anchors)
     h = np.zeros((num_anchors, ), dtype=dtype)
     w = np.zeros((num_anchors, ), dtype=dtype)
     # Add first anchor boxes with ratio=1.

@@ -36,7 +36,7 @@ def smooth_l1_loss(y_true, y_pred):
         https://arxiv.org/abs/1504.08083
     """
     abs_loss = tf.abs(y_true - y_pred)
-    sq_loss = 0.5 * (y_true - y_pred)**2
+    sq_loss = 0.5 * (y_pred - y_true)**2
     loss = tf.compat.v1.where(tf.less(abs_loss, 1.0), sq_loss, abs_loss - 0.5)
     return tf.reduce_sum(input_tensor=loss, axis=-1)
 

@@ -44,7 +44,7 @@ def get_dataset(name, tfrecord_path, ssd_anchors, num_classes, preprocess_fn=Non
     """
     if name not in datasets_map:
         raise ValueError('Name of dataset unknown %s' % name)
-    return datasets_map[name].get_dataset(tf.io.gfile.glob(tfrecord_path), ssd_anchors, num_classes, preprocess_fn=preprocess_fn, preprocess_fn_args=preprocess_fn_args)
+    return datasets_map[name].get_dataset(tf.io.gfile.glob(tfrecord_path), ssd_anchors, num_classes, preprocess_fn=preprocess_fn, preprocess_fn_args=preprocess_fn_args, batch_size=batch_size)
 
 if __name__ == '__main__':
     tfrecord_path = "/Users/madanram/SoulOfCoder/SSD-Tensorflow-V2/datasets/VOC2012/tf/avt_2020_v1_*.tfrecord"

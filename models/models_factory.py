@@ -77,4 +77,4 @@ def get_model(name, num_classes, input_shape=(512, 512, 3), softmax=True):
 
     model_fn = model_fn_map[name]
 
-    return model_fn(num_classes=num_classes, input_shape=input_shape, softmax=True)
+    return model_fn(num_classes=num_classes, input_shape=input_shape, softmax=softmax)

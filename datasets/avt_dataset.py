@@ -119,10 +119,13 @@ def encode_label(ssd_anchors, num_classes):
         labels = tfrecord['labels']
 
         g_target_labels, g_target_boxes, g_target_scores = ssd_utils.bboxes_encode(labels, boxes, ssd_anchors, num_classes)
+        print("ssd_anchors: ",np.asarray(ssd_anchors).shape)
 
         print(g_target_boxes)
         # TODO: Need to check this
         g_target_boxes = [tf.reshape(bb, [-1, 4]) for bb in g_target_boxes]
+        g_target_boxes = tf.concat(values=g_target_boxes, axis=0)
+        tfrecord['boxes'] = g_target_boxes
 
         g_target_scores = tf.cast(tf.concat([tf.reshape(score, [-1, 1]) for score in g_target_scores], axis=0), dtype='float32')
         tfrecord['scores'] = g_target_scores
@@ -133,8 +136,6 @@ def encode_label(ssd_anchors, num_classes):
 
         tfrecord['labels'] = g_target_labels
 
-        g_target_boxes = tf.concat(values=g_target_boxes, axis=0)
-        tfrecord['boxes'] = g_target_boxes
 
         print(g_target_boxes)
         print(g_target_labels)
@@ -190,11 +191,11 @@ def get_dataset(tfrecord_path_list, ssd_anchors, num_classes, batch_size=32, pre
 
 
     # # This dataset will go on forever
-    # dataset = dataset.repeat()
+    dataset = dataset.repeat()
 
-    # dataset = dataset.batch(batch_size)
+    dataset = dataset.batch(batch_size)
 
-    # dataset = dataset.prefetch(buffer_size=AUTO)
+    dataset = dataset.prefetch(buffer_size=AUTO)
 
     return dataset
 

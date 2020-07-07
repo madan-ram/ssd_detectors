@@ -191,15 +191,20 @@ def main(_):
         optimizer = tf.keras.optimizers.SGD(lr=FLAGS.learning_rate, decay=1e-6, momentum=0.0, nesterov=False)
 
         loss = SSDFocalLoss(lambda_conf=10000.0, lambda_offsets=1.0)
-        model.compile(optimizer=optimizer, loss=loss.compute, metrics=loss.metrics)
+        # model.compile(optimizer=optimizer, loss=loss, metrics=loss.metrics)
+        model.compile(optimizer=optimizer, loss=loss, sample_weight_mode='temporal')
 
         print("REPLICAS: ", strategy.num_replicas_in_sync)
 
         feat_shapes = [layer.get_shape().as_list() for layer in model.source_layers]
         anchor_ratios = model.aspect_ratios
+        print("aspect_ratios: ",anchor_ratios)
         anchor_sizes = model.minmax_sizes
+        print("minmax_sizes: ",anchor_sizes)
         anchor_steps = model.steps
+        print("steps: ",anchor_steps)
         special_ssd_boxes = model.special_ssd_boxes
+        print("special_ssd_boxes: ",special_ssd_boxes)
         anchor_offset = 0.5
 
         ssd_anchors = ssd_utils.anchors(
@@ -212,7 +217,7 @@ def main(_):
         )
 
         preprocess_fn = get_preprocessing(FLAGS.preprocess_name, is_training=True)
-        train_dataset = get_dataset(FLAGS.dataset_name, tf_ref_path, ssd_anchors, FLAGS.num_classes, preprocess_fn=preprocess_fn, preprocess_fn_args={'out_shape': input_shape})
+        train_dataset = get_dataset(FLAGS.dataset_name, tf_ref_path, ssd_anchors, FLAGS.num_classes, preprocess_fn=preprocess_fn, preprocess_fn_args={'out_shape': input_shape}, batch_size=FLAGS.batch_size)
 
         train_dataset = train_dataset.map(get_train_iter, num_parallel_calls=tf.data.experimental.AUTOTUNE)
         model.fit(

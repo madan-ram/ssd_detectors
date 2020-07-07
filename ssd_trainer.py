@@ -143,16 +143,31 @@ class SSDLoss(object):
         
         return total_loss
 
+class SSDFocalLoss(tf.keras.losses.Loss):
+# class SSDFocalLoss(object):
+        # self.metrics = []
 
-class SSDFocalLoss(object):
-
-    def __init__(self, lambda_conf=100.0, lambda_offsets=1.0, class_weights=1.0):
+    def __init__(self, lambda_conf=100.0, lambda_offsets=1.0, name='ssd_focal_loss', reduction=tf.keras.losses.Reduction.SUM, class_weights=None, alpha=2.0):
         self.lambda_conf = lambda_conf
         self.lambda_offsets = lambda_offsets
+        self.name = name
+        self.reduction = reduction
+
         self.class_weights = class_weights
-        self.metrics = []
+        self.alpha = alpha
+
+        # build a lookup table
+        if self.class_weights is not None:
+            self.class_weights_lookup_tensor = tf.lookup.StaticHashTable(
+                initializer=tf.lookup.KeyValueTensorInitializer(
+                    keys=tf.constant(list(self.class_weights.keys()), dtype=tf.int64),
+                    values=tf.constant(list(self.class_weights.values()), dtype=K.floatx())
+                ),
+                default_value=tf.constant(1.0),
+                name="class_weight"
+            )
     
-    def compute(self, y_true, y_pred):
+    def __call__(self, y_true, y_pred, sample_weight=None):
         # y.shape (batches, priors, 4 x bbox_offset + n x class_label)
         
         batch_size = tf.shape(y_true)[0]
@@ -163,10 +178,12 @@ class SSDFocalLoss(object):
         # confidence loss
         conf_true = tf.reshape(y_true[:,:,4:], [-1, num_classes])
         conf_pred = tf.reshape(y_pred[:,:,4:], [-1, num_classes])
+        conf_loss = focal_loss(conf_true, conf_pred, alpha=self.alpha)
+        conf_loss = tf.reduce_sum(conf_loss)
         
         class_true = tf.argmax(conf_true, axis=1)
         class_pred = tf.argmax(conf_pred, axis=1)
-        conf = tf.reduce_max(conf_pred, axis=1)
+        # conf = tf.reduce_max(conf_pred, axis=1)
         
         neg_mask_float = conf_true[:,0]
         neg_mask = tf.cast(neg_mask_float, tf.bool)
@@ -176,14 +193,14 @@ class SSDFocalLoss(object):
         num_pos = tf.reduce_sum(pos_mask_float)
         num_neg = num_total - num_pos
         
-        conf_loss = focal_loss(conf_true, conf_pred, alpha=self.class_weights)
-        conf_loss = tf.reduce_sum(conf_loss)
+        # TODO: add class weights to this loss function
         
         conf_loss = conf_loss / (num_total + eps)
         
         # offset loss
         loc_true = tf.reshape(y_true[:,:,0:4], [-1, 4])
         loc_pred = tf.reshape(y_pred[:,:,0:4], [-1, 4])
+        print("true: ",loc_true.get_shape(),"prediction: ",loc_pred.get_shape())
         
         loc_loss = smooth_l1_loss(loc_true, loc_pred)
         pos_loc_loss = tf.reduce_sum(loc_loss * pos_mask_float) # only for positive ground truth
@@ -193,22 +210,23 @@ class SSDFocalLoss(object):
         # total loss
         total_loss = self.lambda_conf * conf_loss + self.lambda_offsets * loc_loss
         
-        # metrics
-        precision, recall, accuracy, fmeasure = compute_metrics(class_true, class_pred, conf, top_k=100*batch_size)
-        
-        def make_fcn(t):
-            return lambda y_true, y_pred: t
-        for name in ['conf_loss', 
-                     'loc_loss', 
-                     'precision', 
-                     'recall',
-                     'accuracy',
-                     'fmeasure', 
-                    ]:
-            f = make_fcn(eval(name))
-            f.__name__ = name
-            self.metrics.append(f)
-        
         return total_loss
+        # # metrics
+        # precision, recall, accuracy, fmeasure = compute_metrics(class_true, class_pred, conf, top_k=100*batch_size)
+        
+        # def make_fcn(t):
+        #     return lambda y_true, y_pred: t
+        # for name in ['conf_loss', 
+        #              'loc_loss', 
+        #              'precision', 
+        #              'recall',
+        #              'accuracy',
+        #              'fmeasure', 
+        #             ]:
+        #     f = make_fcn(eval(name))
+        #     f.__name__ = name
+        #     self.metrics.append(f)
+        
+        # return total_loss
 
 
