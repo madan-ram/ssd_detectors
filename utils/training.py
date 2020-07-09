@@ -65,7 +65,31 @@ def cross_entropy_loss(y_true, y_pred):
     loss = - y_true*tf.math.log(y_pred) - (1.-y_true)*tf.math.log(1.-y_pred)
     return tf.reduce_sum(input_tensor=loss, axis=-1)
 
-def focal_loss(y_true, y_pred, gamma=2., alpha=1.):
+# def focal_loss(y_true, y_pred, gamma=2., alpha=1.):
+#     """Compute binary focal loss.
+    
+#     # Arguments
+#         y_true: Ground truth targets,
+#             tensor of shape (?, num_boxes, num_classes).
+#         y_pred: Predicted logits,
+#             tensor of shape (?, num_boxes, num_classes).
+    
+#     # Returns
+#         focal_loss: Focal loss, tensor of shape (?, num_boxes).
+
+#     # References
+#         https://arxiv.org/abs/1708.02002
+#     """
+#     #y_pred /= K.sum(y_pred, axis=-1, keepdims=True)
+#     eps = K.epsilon()
+#     y_pred = K.clip(y_pred, eps, 1.-eps)
+#     #loss = - K.pow(1-y_pred, gamma) * y_true*tf.log(y_pred) - K.pow(y_pred, gamma) * (1-y_true)*tf.log(1-y_pred)
+#     pt = tf.compat.v1.where(tf.equal(y_true, 1.), y_pred, 1.-y_pred)
+#     loss = - K.pow(1.-pt, gamma) * K.log(pt)
+#     loss = alpha * loss
+#     return tf.reduce_sum(input_tensor=loss, axis=-1)
+
+def focal_loss(y_true, y_pred, gamma=2., mask=None):
     """Compute binary focal loss.
     
     # Arguments
@@ -86,9 +110,12 @@ def focal_loss(y_true, y_pred, gamma=2., alpha=1.):
     #loss = - K.pow(1-y_pred, gamma) * y_true*tf.log(y_pred) - K.pow(y_pred, gamma) * (1-y_true)*tf.log(1-y_pred)
     pt = tf.compat.v1.where(tf.equal(y_true, 1.), y_pred, 1.-y_pred)
     loss = - K.pow(1.-pt, gamma) * K.log(pt)
-    loss = alpha * loss
-    return tf.reduce_sum(input_tensor=loss, axis=-1)
 
+    if mask is not None:
+        # loss = tf.boolean_mask(loss, mask)
+        loss = loss*tf.expand_dims(mask, axis=-1)
+
+    return tf.reduce_sum(input_tensor=loss, axis=-1)
 
 def reduced_focal_loss(y_true, y_pred, gamma=2., alpha=1., th=0.5):
     """Compute binary reduced focal loss.

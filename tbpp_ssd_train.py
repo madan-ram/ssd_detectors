@@ -17,9 +17,9 @@ import tensorflow as tf
 from tensorflow.keras.models import Model
 from models import models_factory
 import os
-
+import config
 import math
-from ssd_trainer import SSDFocalLoss
+from ssd_trainer import SSDFocalLoss,AvtMetricsCallback
 # , compute_metrics
 from datetime import datetime
 from tensorflow.python.framework.ops import disable_eager_execution
@@ -141,14 +141,17 @@ def main(_):
 
     # TODO: remove below freeze
     freeze = []
+    steps_per_epoch=8
+    val_steps_per_epoch=1
 
-    epochs = 100
+    epochs = 1000
 
     # Load config and paramaters
     softmax = True
     input_shape = (FLAGS.image_size, FLAGS.image_size, 3)
     # Get data
-    tf_ref_path = os.path.join(FLAGS.dataset_dir, FLAGS.dataset_name+'*.tfrecord')
+    train_ref_path = os.path.join(FLAGS.dataset_dir+'/training_data', FLAGS.dataset_name+'*.tfrecord')
+    val_ref_path = os.path.join(FLAGS.dataset_dir+'/validation_data', FLAGS.dataset_name+'*.tfrecord')
 
     TPU_ADDRESS = None
     try:
@@ -190,7 +193,7 @@ def main(_):
 
         optimizer = tf.keras.optimizers.SGD(lr=FLAGS.learning_rate, decay=1e-6, momentum=0.0, nesterov=False)
 
-        loss = SSDFocalLoss(lambda_conf=10000.0, lambda_offsets=1.0)
+        loss = SSDFocalLoss()
         # model.compile(optimizer=optimizer, loss=loss, metrics=loss.metrics)
         model.compile(optimizer=optimizer, loss=loss, sample_weight_mode='temporal')
 
@@ -217,22 +220,51 @@ def main(_):
         )
 
         preprocess_fn = get_preprocessing(FLAGS.preprocess_name, is_training=True)
-        train_dataset = get_dataset(FLAGS.dataset_name, tf_ref_path, ssd_anchors, FLAGS.num_classes, preprocess_fn=preprocess_fn, preprocess_fn_args={'out_shape': input_shape}, batch_size=FLAGS.batch_size)
-
+        train_dataset = get_dataset(FLAGS.dataset_name, train_ref_path, ssd_anchors, FLAGS.num_classes, preprocess_fn=preprocess_fn, preprocess_fn_args={'out_shape': input_shape}, batch_size=FLAGS.batch_size)
+        val_dataset = get_dataset(FLAGS.dataset_name, val_ref_path, ssd_anchors, FLAGS.num_classes, preprocess_fn=preprocess_fn, preprocess_fn_args={'out_shape': input_shape}, batch_size=FLAGS.batch_size)
+        
         train_dataset = train_dataset.map(get_train_iter, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+        val_dataset = val_dataset.map(get_train_iter, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+        class_labels=config.whitelist_with_fields_label
+        val_avt_callback_metrics = AvtMetricsCallback(val_dataset.take(val_steps_per_epoch), 'val', class_labels, batch_size=FLAGS.batch_size)
+        #train_avt_callback_metrics = AvtMetricsCallback(train_dataset.take(int(num_batch_per_epoch*0.25)), 'train', dataset_meta.class_labels, dataset_meta.sub_catg_class_labels, BATCH_SIZE)
+        append = False
+        #if FLAGS.load_model_epoch >0:
+         #   append = True
+        csv_logger = tf.keras.callbacks.CSVLogger(os.path.join(FLAGS.model_log_dir, 'training.csv'), append=append)
+        model_dir = os.path.join(FLAGS.model_log_dir, 'models')
+        model_str = 'model.{epoch:04d}.tf'
+
+
         model.fit(
             train_dataset,
             epochs=epochs,
             verbose=1, 
             shuffle=True,
             initial_epoch=0,
-            # validation_data=gen_val.generate(), 
-            # validation_steps=gen_val.num_batches, 
-            steps_per_epoch=FLAGS.batch_size*200,
-            max_queue_size=1, 
+            validation_data=val_dataset, 
+            validation_steps=val_steps_per_epoch, 
+            steps_per_epoch=steps_per_epoch,
+            #max_queue_size=1, 
             workers=1,
             use_multiprocessing=False,
-            callbacks=[tensorboard_callback, lr_callback],
+            callbacks=[
+                                # Since we are explicit specifying progbarLogger, the builtin call back is disabled.
+                                # Also this is a bug that ProgbarLogger does the average of metrics
+                                # TODO: keras uses logs_dict to get metrics check->"AvtMetricsCallback", Bug ProgbarLogger does the update of state, hence disable progressbar using verbose=0
+                                tf.keras.callbacks.ProgbarLogger(count_mode="steps", stateful_metrics=val_avt_callback_metrics.stateful_metrics),
+                                tensorboard_callback,
+                                val_avt_callback_metrics,
+                                tf.keras.callbacks.ModelCheckpoint(
+                                        filepath=os.path.join(model_dir, model_str),
+                                        monitor='val_average_macro_f1',
+                                        mode='max',
+                                        save_best_only=True,
+                                        save_weights_only=False #Done: this is not working need to fix, I want it to be false for easy deployment
+                                ),
+                                tf.keras.callbacks.EarlyStopping(patience=5, monitor="val_loss"),
+                                csv_logger]
+
         )
 
 

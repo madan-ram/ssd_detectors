@@ -4,229 +4,183 @@ import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow.keras.backend as K
 import tensorflow as tf
-
+from sklearn import metrics as skm
+from sklearn.metrics import precision_recall_fscore_support
+import os
 from utils.training import smooth_l1_loss, softmax_loss, focal_loss
 from utils.training import plot_log
 
+class AvtMetricsCallback(tf.keras.callbacks.Callback):
+        """Keras callback to calculate metrics of a classifier for each epoch.
+        Attributes
+        ----------
+        dataset
+                The dataset
+        """
+        def __init__(self, dataset, dataset_type, class_label, batch_size, stateful_metrics=None):
+                # stateful_metrics: Iterable of string names of metrics that
+                #  should *not* be averaged over an epoch.
+                #  Metrics in this list will be logged as-is in `on_epoch_end`.
+                #  All others will be averaged in `on_epoch_end`.
+                self.dataset = dataset
+                self.dataset_type = dataset_type
+                self.class_label = class_label
+                self.batch_size = batch_size
+                self.stateful_metrics = stateful_metrics or []
+                self.stateful_metrics.append(self.dataset_type+'_average_micro_precision_for_class')
+                self.stateful_metrics.append(self.dataset_type+'_average_micro_recall_for_class')
+                self.stateful_metrics.append(self.dataset_type+'_average_micro_f1_for_class')
 
-def compute_metrics(class_true, class_pred, conf, top_k=100):
-    """Compute precision, recall, accuracy and f-measure for top_k predictions.
-    
-    from top_k predictions that are TP FN or FP (TN kept out)
-    """
-    
-    # TODO: does this only work for one class?
-
-    top_k = tf.cast(top_k, tf.int32)
-    eps = K.epsilon()
-    
-    mask = tf.greater(class_true + class_pred, 0)
-    #mask = tf.logical_or(tf.greater(class_true, 0), tf.greater(class_pred, 0))
-    mask_float = tf.cast(mask, tf.float32)
-    
-    vals, idxs = tf.nn.top_k(conf * mask_float, k=top_k)
-    
-    top_k_class_true = tf.gather(class_true, idxs)
-    top_k_class_pred = tf.gather(class_pred, idxs)
-    
-    true_mask = tf.equal(top_k_class_true, top_k_class_pred)
-    false_mask = tf.logical_not(true_mask)
-    pos_mask = tf.greater(top_k_class_pred, 0)
-    neg_mask = tf.logical_not(pos_mask)
-    
-    tp = tf.reduce_sum(tf.cast(tf.logical_and(true_mask, pos_mask), tf.float32))
-    fp = tf.reduce_sum(tf.cast(tf.logical_and(false_mask, pos_mask), tf.float32))
-    fn = tf.reduce_sum(tf.cast(tf.logical_and(false_mask, neg_mask), tf.float32))
-    tn = tf.reduce_sum(tf.cast(tf.logical_and(true_mask, neg_mask), tf.float32))
-    
-    precision = tp / (tp + fp + eps)
-    recall = tp / (tp + fn + eps)
-    accuracy = (tp + tn) / (tp + tn + fp + fn + eps)
-    fmeasure = 2 * (precision * recall) / (precision + recall + eps)
-    
-    return precision, recall, accuracy, fmeasure
+                self.stateful_metrics.append(self.dataset_type+'_class_wise_report')
+                # self.stateful_metrics.append(self.dataset_type+'_average_macro_f1_for_class')
+                # self.stateful_metrics.append(self.dataset_type+'_average_macro_f1')
 
 
-class SSDLoss(object):
-    """Multibox loss for SSD.
-    
-    # Arguments
-        alpha: Weight of L1-smooth loss.
-        neg_pos_ratio: Max ratio of negative to positive boxes in loss.
-        negatives_for_hard: Number of negative boxes to consider
-            if there is no positive boxes in batch.
-        
-    # References
-        https://arxiv.org/abs/1512.02325
-    """
+        def on_epoch_end(self, epoch, logs={}):
+                # y.shape (batches, priors, 4 x bbox_offset + n x class_label)
+                print("Metrics analysis on ", self.dataset_type, 'dataset')
 
-    def __init__(self, alpha=1.0, neg_pos_ratio=3.0, negatives_for_hard=100.0):
-        self.alpha = alpha
-        self.neg_pos_ratio = neg_pos_ratio
-        self.metrics = []
-    
-    def compute(self, y_true, y_pred):
-        # y.shape (batches, priors, 4 x segment_offset + n x class_label)
-        # TODO: negatives_for_hard?
-        #       mask based on y_true or y_pred?
-        
-        batch_size = tf.shape(y_true)[0]
-        num_priors = tf.shape(y_true)[1]
-        num_classes = tf.shape(y_true)[2] - 4
-        eps = K.epsilon()
-        
-        # confidence loss
-        conf_true = tf.reshape(y_true[:,:,4:], [-1, num_classes])
-        conf_pred = tf.reshape(y_pred[:,:,4:], [-1, num_classes])
-        
-        conf_loss = softmax_loss(conf_true, conf_pred)
-        class_true = tf.argmax(conf_true, axis=1)
-        class_pred = tf.argmax(conf_pred, axis=1)
-        conf = tf.reduce_max(conf_pred, axis=1)
-        
-        neg_mask_float = conf_true[:,0]
-        neg_mask = tf.cast(neg_mask_float, tf.bool)
-        pos_mask = tf.logical_not(neg_mask)
-        pos_mask_float = tf.cast(pos_mask, tf.float32)
-        num_total = tf.cast(tf.shape(conf_true)[0], tf.float32)
-        num_pos = tf.reduce_sum(pos_mask_float)
-        num_neg = num_total - num_pos
-        
-        pos_conf_loss = tf.reduce_sum(conf_loss * pos_mask_float)
-        pos_conf_loss = pos_conf_loss / (num_pos + eps)
-        
-        ## take only false positives for hard negative mining
-        #false_pos_mask = tf.logical_and(neg_mask, tf.not_equal(class_pred, 0))
-        #num_false_pos = tf.reduce_sum(tf.cast(false_pos_mask, tf.float32))
-        #num_neg = tf.minimum(self.neg_pos_ratio * num_pos, num_false_pos)
-        #neg_conf_loss = tf.boolean_mask(conf_loss, false_pos_mask)
-        
-        num_neg = tf.minimum(self.neg_pos_ratio * num_pos, num_neg)
-        neg_conf_loss = tf.boolean_mask(conf_loss, neg_mask)
-        neg_conf_loss = neg_conf_loss / (num_neg + eps)
-        
-        vals, idxs = tf.nn.top_k(neg_conf_loss, k=tf.cast(num_neg, tf.int32))
-        #neg_conf_loss = tf.reduce_sum(tf.gather(neg_conf_loss, idxs))
-        neg_conf_loss = tf.reduce_sum(vals)
-        
-        conf_loss = pos_conf_loss + neg_conf_loss
-        
-        # offset loss
-        loc_true = tf.reshape(y_true[:,:,0:4], [-1, 4])
-        loc_pred = tf.reshape(y_pred[:,:,0:4], [-1, 4])
-        
-        loc_loss = smooth_l1_loss(loc_true, loc_pred)
-        pos_loc_loss = tf.reduce_sum(loc_loss * pos_mask_float) # only for positives
-        loc_loss = pos_loc_loss / (num_pos + eps)
-        
-        # total loss
-        total_loss = conf_loss + self.alpha * loc_loss
-        
-        # metrics
-        precision, recall, accuracy, fmeasure = compute_metrics(class_true, class_pred, conf, top_k=100*batch_size)
-        
-        def make_fcn(t):
-            return lambda y_true, y_pred: t
-        for name in ['num_pos', 
-                     'num_neg', 
-                     'pos_conf_loss', 
-                     'neg_conf_loss', 
-                     'pos_loc_loss', 
-                     'precision', 
-                     'recall',
-                     'accuracy',
-                     'fmeasure', 
-                    ]:
-            f = make_fcn(eval(name))
-            f.__name__ = name
-            self.metrics.append(f)
-        
-        return total_loss
+                logs = logs or {}
+
+                class_true_label_lst = []
+                class_pred_label_lst = []
+                for index, (x, conf_true) in enumerate(self.dataset):
+                        batch_size = tf.shape(conf_true)[0]
+                        num_priors = tf.shape(conf_true)[1]
+                        num_classes = tf.shape(conf_true)[2] - 4
+                        eps = K.epsilon()
+                        
+                        conf_pred = self.model.predict(x)
+                        
+                        # confidence loss
+                        conf_true = tf.reshape(conf_true[:, :, 4:], [-1, num_priors, num_classes])
+                        conf_pred = tf.reshape(conf_pred[:, :, 4:], [-1, num_priors, num_classes])
+                        
+                        BACKGROUND_CLASS_ID = 0  # Choose the class of interest
+                        class_true_label_lst += tf.reshape(tf.argmax(conf_true, axis=-1), [-1]).numpy().tolist()
+                        class_pred_label_lst += tf.reshape(tf.argmax(conf_pred, axis=-1), [-1]).numpy().tolist()
+
+                        # neg_mask = K.cast(K.equal(class_true, BACKGROUND_CLASS_ID), tf.float32)
+                        
+                        # pos_mask = tf.logical_not(neg_mask)
+                        # pos_mask_float = tf.cast(pos_mask, tf.float32)
+                        # num_pos = tf.reduce_sum(pos_mask_float)
+                        
+                        # offset loss
+                        # loc_true = tf.reshape(y_true[:, :, 0:4], [-1, num_priors, 4])
+                        # loc_pred = tf.reshape(y_pred[:, :, 0:4], [-1, num_priors, 4])
+                        
+                        # loc_loss = smooth_l1_loss(loc_true, loc_pred)
+                        # pos_loc_loss = tf.reduce_sum(loc_loss * pos_mask_float) # only for positive ground truth
+                        # loc_loss = pos_loc_loss/(num_pos + eps)
+                        
+                        # # total loss
+                        # total_loss = conf_loss + self.alpha * loc_loss
+                        
+                        # return total_loss
+
+                # class_gt_lst = []
+                # sub_catg_class_gt_lst = []
+                # class_p_lst = []
+                # sub_catg_class_p_lst = []
+
+                average_micro_precision_for_class = skm.precision_score(class_true_label_lst, class_pred_label_lst, average='micro')
+                logs[self.dataset_type+'_average_micro_precision_for_class'] = average_micro_precision_for_class
+
+                average_micro_recall_for_class = skm.recall_score(class_true_label_lst, class_pred_label_lst, average='micro')
+                logs[self.dataset_type+'_average_micro_recall_for_class'] = average_micro_recall_for_class
+
+                
+                class_f1 = skm.f1_score(class_true_label_lst, class_pred_label_lst, average='micro')
+                logs[self.dataset_type+'_average_micro_f1_for_class'] = class_f1
+
+
+
+                # # Calculate macro f1 score
+                class_f1 = skm.f1_score(class_true_label_lst, class_pred_label_lst, average='macro')
+                logs[self.dataset_type+'_average_macro_f1'] = class_f1
+                
+                records = precision_recall_fscore_support(class_true_label_lst, class_pred_label_lst, labels=range(len(self.class_label)), average=None, zero_division=0)
+                records = np.array(records).T.tolist()
+                for cl, record in zip(self.class_label, records):
+                        headers = ["precision", "recall", "f1-score", "support"]
+                        for h, val in zip(headers, record):
+                                metric_dict_path = os.path.join(self.dataset_type+'_class_wise_report', cl, h)
+                                logs[metric_dict_path] = val
+                                self.stateful_metrics.append(metric_dict_path)
+
+
+
+                record = precision_recall_fscore_support(class_true_label_lst, class_pred_label_lst, labels=range(len(self.class_label)), average='macro', zero_division=0)
+                headers = ["precision", "recall", "f1-score", "support"]
+                for h, val in zip(headers, record):
+                        metric_dict_path = os.path.join(self.dataset_type+'_class_wise_report', 'macro avg', h)
+                        logs[metric_dict_path] = val
+                        self.stateful_metrics.append(metric_dict_path)
 
 class SSDFocalLoss(tf.keras.losses.Loss):
-# class SSDFocalLoss(object):
-        # self.metrics = []
+        def __init__(self, alpha=1.0, name='ssd_focal_loss', reduction=tf.keras.losses.Reduction.SUM, class_weights=None, gamma=2.0):
+                #self.lambda_conf = lambda_conf
+                #self.lambda_offsets = lambda_offsets
+                self.name = name
+                self.reduction = reduction
+                self.alpha = alpha
+                self.gamma = gamma
 
-    def __init__(self, lambda_conf=100.0, lambda_offsets=1.0, name='ssd_focal_loss', reduction=tf.keras.losses.Reduction.SUM, class_weights=None, alpha=2.0):
-        self.lambda_conf = lambda_conf
-        self.lambda_offsets = lambda_offsets
-        self.name = name
-        self.reduction = reduction
+                # TODO: implement class weights
+                self.class_weights = class_weights
+                # build a lookup table
+                if self.class_weights is not None:
+                        self.class_weights_lookup_tensor = tf.lookup.StaticHashTable(
+                                initializer=tf.lookup.KeyValueTensorInitializer(
+                                        keys=tf.constant(list(self.class_weights.keys()), dtype=tf.int64),
+                                        values=tf.constant(list(self.class_weights.values()), dtype=K.floatx())
+                                ),
+                                default_value=tf.constant(1.0),
+                                name="class_weight"
+                        )
+        
+        def __call__(self, y_true, y_pred, sample_weight=None):
+                # y.shape (batches, priors, 4 x bbox_offset + n x class_label)
+                
+                batch_size = tf.shape(y_true)[0]
+                num_priors = tf.shape(y_true)[1]
+                num_classes = tf.shape(y_true)[2] - 4
+                eps = K.epsilon()
+                
+                # confidence loss
+                conf_true = tf.reshape(y_true[:, :, 4:], [-1, num_priors, num_classes])
+                conf_pred = tf.reshape(y_pred[:, :, 4:], [-1, num_priors, num_classes])
+                conf_loss = focal_loss(conf_true, conf_pred, gamma=self.gamma)
 
-        self.class_weights = class_weights
-        self.alpha = alpha
-
-        # build a lookup table
-        if self.class_weights is not None:
-            self.class_weights_lookup_tensor = tf.lookup.StaticHashTable(
-                initializer=tf.lookup.KeyValueTensorInitializer(
-                    keys=tf.constant(list(self.class_weights.keys()), dtype=tf.int64),
-                    values=tf.constant(list(self.class_weights.values()), dtype=K.floatx())
-                ),
-                default_value=tf.constant(1.0),
-                name="class_weight"
-            )
-    
-    def __call__(self, y_true, y_pred, sample_weight=None):
-        # y.shape (batches, priors, 4 x bbox_offset + n x class_label)
-        
-        batch_size = tf.shape(y_true)[0]
-        num_priors = tf.shape(y_true)[1]
-        num_classes = tf.shape(y_true)[2] - 4
-        eps = K.epsilon()
-        
-        # confidence loss
-        conf_true = tf.reshape(y_true[:,:,4:], [-1, num_classes])
-        conf_pred = tf.reshape(y_pred[:,:,4:], [-1, num_classes])
-        conf_loss = focal_loss(conf_true, conf_pred, alpha=self.alpha)
-        conf_loss = tf.reduce_sum(conf_loss)
-        
-        class_true = tf.argmax(conf_true, axis=1)
-        class_pred = tf.argmax(conf_pred, axis=1)
-        # conf = tf.reduce_max(conf_pred, axis=1)
-        
-        neg_mask_float = conf_true[:,0]
-        neg_mask = tf.cast(neg_mask_float, tf.bool)
-        pos_mask = tf.logical_not(neg_mask)
-        pos_mask_float = tf.cast(pos_mask, tf.float32)
-        num_total = tf.cast(tf.shape(conf_true)[0], tf.float32)
-        num_pos = tf.reduce_sum(pos_mask_float)
-        num_neg = num_total - num_pos
-        
-        # TODO: add class weights to this loss function
-        
-        conf_loss = conf_loss / (num_total + eps)
-        
-        # offset loss
-        loc_true = tf.reshape(y_true[:,:,0:4], [-1, 4])
-        loc_pred = tf.reshape(y_pred[:,:,0:4], [-1, 4])
-        print("true: ",loc_true.get_shape(),"prediction: ",loc_pred.get_shape())
-        
-        loc_loss = smooth_l1_loss(loc_true, loc_pred)
-        pos_loc_loss = tf.reduce_sum(loc_loss * pos_mask_float) # only for positive ground truth
-        
-        loc_loss = pos_loc_loss / (num_pos + eps)
-        
-        # total loss
-        total_loss = self.lambda_conf * conf_loss + self.lambda_offsets * loc_loss
-        
-        return total_loss
-        # # metrics
-        # precision, recall, accuracy, fmeasure = compute_metrics(class_true, class_pred, conf, top_k=100*batch_size)
-        
-        # def make_fcn(t):
-        #     return lambda y_true, y_pred: t
-        # for name in ['conf_loss', 
-        #              'loc_loss', 
-        #              'precision', 
-        #              'recall',
-        #              'accuracy',
-        #              'fmeasure', 
-        #             ]:
-        #     f = make_fcn(eval(name))
-        #     f.__name__ = name
-        #     self.metrics.append(f)
-        
-        # return total_loss
-
+                # TODO: add class weights to this loss function
+                num_total = num_priors*batch_size
+                num_total = tf.cast(num_total, tf.float32)
+                conf_loss = tf.reduce_sum(conf_loss)/(num_total + eps)
+                
+                # conf_loss = tf.reduce_sum(conf_loss)
+                BACKGROUND_CLASS_ID = 0  # Choose the class of interest
+                class_true = tf.argmax(conf_true, axis=-1)
+                neg_mask = K.cast(K.equal(class_true, BACKGROUND_CLASS_ID), tf.bool)
+                print("neg_mask------------------",neg_mask)
+                pos_mask = tf.logical_not(neg_mask)
+                print("pos_mask------------------",pos_mask)
+                pos_mask_float = tf.cast(pos_mask, tf.float32)
+                print("pos_mask_float------------------",pos_mask_float)
+                num_pos = tf.reduce_sum(pos_mask_float)
+                print("num_pos------------------",num_pos)
+                
+                # offset loss
+                loc_true = tf.reshape(y_true[:, :, 0:4], [-1, num_priors, 4])
+                loc_pred = tf.reshape(y_pred[:, :, 0:4], [-1, num_priors, 4])
+                
+                loc_loss = smooth_l1_loss(loc_true, loc_pred)
+                pos_loc_loss = tf.reduce_sum(loc_loss * pos_mask_float) # only for positive ground truth
+                loc_loss = pos_loc_loss/(num_pos + eps)
+                
+                # total loss
+                total_loss = conf_loss + self.alpha * loc_loss
+                print("total_loss------------------------>",total_loss)
+                
+                return total_loss
 

@@ -170,7 +170,7 @@ def multibox_head(source_layers, num_priors, num_classes, normalizations=None, s
     return predictions
 
 
-def SSD300(input_shape=(300, 300, 3), num_classes=21, softmax=True):
+def SSD300(input_shape=(300, 300, 1), num_classes=21, softmax=True):
     """SSD300 architecture.
 
     # Arguments
@@ -206,7 +206,7 @@ def SSD300(input_shape=(300, 300, 3), num_classes=21, softmax=True):
     return model
 
 
-def SSD512(input_shape=(512, 512, 3), num_classes=21, softmax=True):
+def SSD512(input_shape=(512, 512, 1), num_classes=21, softmax=True):
     """SSD512 architecture.
 
     # Arguments
@@ -243,7 +243,7 @@ def SSD512(input_shape=(512, 512, 3), num_classes=21, softmax=True):
     return model
 
 
-def DSOD300(input_shape=(300, 300, 3), num_classes=21, activation='relu', softmax=True):
+def DSOD300(input_shape=(300, 300, 1), num_classes=21, activation='relu', softmax=True):
     """DSOD, DenseNet based SSD300 architecture.
 
     # Arguments
@@ -277,7 +277,7 @@ def DSOD300(input_shape=(300, 300, 3), num_classes=21, activation='relu', softma
 SSD300_dense = DSOD300
 
 
-def DSOD512(input_shape=(512, 512, 3), num_classes=21, activation='relu', softmax=True):
+def DSOD512(input_shape=(512, 512, 1), num_classes=21, activation='relu', softmax=True):
     """DSOD, DenseNet based SSD512 architecture.
 
     # Arguments
@@ -311,7 +311,7 @@ def DSOD512(input_shape=(512, 512, 3), num_classes=21, activation='relu', softma
 SSD512_dense = DSOD512
 
 
-def SSD512_resnet(num_classes, input_shape=(512, 512, 3), softmax=True):
+def SSD512_resnet(num_classes, input_shape=(512, 512, 1), softmax=True):
     
     # TODO: it does not converge!
     

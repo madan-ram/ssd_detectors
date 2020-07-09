@@ -71,7 +71,7 @@ def multibox_head(source_layers, num_classes, num_priors, normalizations=None, s
     return predictions
 
 
-def TBPP512(num_classes, input_shape=(512, 512, 3), softmax=True):
+def TBPP512(num_classes, input_shape=(512, 512, 1), softmax=True):
     """TextBoxes++512 architecture.
 
     # Arguments
@@ -105,7 +105,7 @@ def TBPP512(num_classes, input_shape=(512, 512, 3), softmax=True):
     
     return model
 
-def DSODTBPP512(num_classes, input_shape=(512, 512, 3), softmax=True):
+def DSODTBPP512(num_classes, input_shape=(512, 512, 1), softmax=True):
     """DenseNet based Architecture for TextBoxes++512.
     """
     
@@ -195,7 +195,7 @@ def multibox_head_separable(source_layers, num_classes, num_priors, normalizatio
     return predictions
 
 
-def TBPP512_dense_separable(num_classes, input_shape=(512, 512, 3), softmax=True):
+def TBPP512_dense_separable(num_classes, input_shape=(512, 512, 1), softmax=True):
     """TextBoxes++512 architecture with dense blocks and separable convolution.
     """
     
