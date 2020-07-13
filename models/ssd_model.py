@@ -320,25 +320,41 @@ def SSD512_resnet(num_classes, input_shape=(512, 512, 1), softmax=True):
     
     # Add multibox head for classification and regression
     aspect_ratios = [[1,2,1/2], [1,2,1/2,3,1/3], [1,2,1/2,3,1/3], [1,2,1/2,3,1/3], [1,2,1/2,3,1/3], [1,2,1/2], [1,2,1/2]]
-    minmax_sizes = [(35, 76), (76, 153), (153, 230), (230, 307), (307, 384), (384, 460), (460, 537)]
+    minmax_sizes = list(map(list,[(35, 76), (76, 153), (153, 230), (230, 307), (307, 384), (384, 460), (460, 537)]))
     steps = [8, 16, 32, 64, 128, 256, 512]
+    normalizations = [20, -1, -1, -1, -1, -1, -1]
     num_priors = [len(ar)+len(s) for ar ,s in zip(aspect_ratios,minmax_sizes)]
-    #num_priors = [4, 6, 6, 6, 6, 4, 4]
-    normalizations = [20, 20, 20, 20, 20, 20, 20]
+
+    feat_shapes = [layer.get_shape().as_list() for layer in source_layers]
     output_tensor = multibox_head(source_layers, num_priors, num_classes, normalizations, softmax)
     model = Model(input_tensor, output_tensor)
-    model.num_classes = num_classes
-    model.aspect_ratios = aspect_ratios
-    model.minmax_sizes = minmax_sizes
-    model.steps = steps
+    #feat_shapes = list(map(list,feat_shapes))
+    new_feat_shapes=[]
+    for feat_shape in feat_shapes:
+        new_feat_shape=[]
+        for value in feat_shape:
+            if value is None:
+                value = -1
+            new_feat_shape.append(value)
+        new_feat_shapes.append(new_feat_shape)
 
+
+    model.additional_params = {
+        'feat_shapes': new_feat_shapes,
+        'num_classes': num_classes,
+        'aspect_ratios': aspect_ratios,
+        'minmax_sizes': minmax_sizes,
+        'steps': steps,
+        'image_size': list(input_shape[:2]),
+        'source_layer_names': [l.name for l in source_layers],
+        'special_ssd_boxes': True
+        #'special_ssd_boxes' : True
+    }
+    for key,value in model.additional_params.items():
+        print("type key, type value ====================",type(key),type(value))
     # parameters for prior boxes
-    model.image_size = input_shape[:2]
-    model.source_layers = source_layers
+    # model.image_size = input_shape[:2]
+    # model.source_layers = source_layers
     # stay compatible with caffe models
-    #model.aspect_ratios = [[1,2,1/2], [1,2,1/2,3,1/3], [1,2,1/2,3,1/3], [1,2,1/2,3,1/3], [1,2,1/2,3,1/3], [1,2,1/2], [1,2,1/2]]
-    #model.minmax_sizes = [(35, 76), (76, 153), (153, 230), (230, 307), (307, 384), (384, 460), (460, 537)]
-    #model.steps = [8, 16, 32, 64, 128, 256, 512]
-    model.special_ssd_boxes = True
     
     return model

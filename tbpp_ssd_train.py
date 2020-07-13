@@ -26,8 +26,9 @@ from tensorflow.python.framework.ops import disable_eager_execution
 from preprocessing.preprocessing_factory import get_preprocessing
 from datasets.dataset_factory import get_dataset
 from datasets import ssd_utils
-#import keras.backend.tensorflow_backend as K
+from tensorflow.keras.models import load_model
 import tensorflow.python.keras.backend as K
+import pickle
 # import matplotlib.pyplot as plt
 # import numpy as np
 # import cv2
@@ -54,6 +55,10 @@ tf.compat.v1.app.flags.DEFINE_float(
 tf.compat.v1.app.flags.DEFINE_string(
     'model_log_dir', '/tmp/tfmodel/',
     'Directory where checkpoints and event logs are written to.')
+
+tf.compat.v1.app.flags.DEFINE_integer(
+    'load_model_epoch', 0,
+    'If set to any number > 0 will load from model_log_dir')
 
 tf.compat.v1.app.flags.DEFINE_string(
     'dataset_dir', '/tmp/tf/',
@@ -156,8 +161,14 @@ def main(_):
 
     # TODO: remove below freeze
     freeze = []
-    steps_per_epoch=50
-    val_steps_per_epoch=15
+    steps_per_epoch=1
+    val_steps_per_epoch=1
+
+    model_dir = os.path.join(FLAGS.model_log_dir, 'models')
+    model_params_path = os.path.join(model_dir, 'ssd_params.json')
+    model_str = 'model.{epoch:04d}.tf'
+    model_path = os.path.join(model_dir, model_str)
+
 
     epochs = 1000
     set_gpu_mem_config()
@@ -199,10 +210,36 @@ def main(_):
         strategy = tf.distribute.get_strategy()
 
     with strategy.scope():
-        # Get the SSD network and its anchors.
-        model = models_factory.get_model(FLAGS.model_name, FLAGS.num_classes, input_shape=input_shape, softmax=softmax)
+
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
+        
+        initial_epoch = 0
+        model = None
+        if FLAGS.load_model_epoch == 0:
+            # Get the SSD network and its anchors.
+            model = models_factory.get_model(FLAGS.model_name, FLAGS.num_classes, input_shape=input_shape, softmax=softmax)
+        else:
+            # load the checkpoint from disk
+            print("[INFO] loading {}... this model contains network used for training".format(model_path))
+            model = load_model(model_path.format(epoch=FLAGS.load_model_epoch), compile=False)
+            # update the learning rate
+            print("[INFO] old learning rate: {}".format(K.get_value(model.optimizer.lr)))
+            K.set_value(model.optimizer.lr, FLAGS.learning_rate)
+            print("[INFO] new learning rate: {}".format(K.get_value(model.optimizer.lr)))
+            initial_epoch = FLAGS.load_model_epoch
+
         # Get model summary
         model.summary()
+
+        # While saving the model store the model ssd_params.pkl in a pickle file for reloading the model
+        if FLAGS.load_model_epoch == 0:
+            with open(os.path.join(model_dir, 'ssd_params.pkl'), 'wb') as fw:
+                print("model dictionary======================>>>>>>",type(model.additional_params), model.additional_params)
+                fw.write(pickle.dumps(model.additional_params))
+        else:
+            with open(os.path.join(model_dir, 'ssd_params.pkl'), 'rb') as fr:
+                model.additional_params = pickle.loads(fr.read())
 
         lr_callback = tf.keras.callbacks.LearningRateScheduler(step_decay)
         tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=logdir)
@@ -214,16 +251,18 @@ def main(_):
         # model.compile(optimizer=optimizer, loss=loss, metrics=loss.metrics)
         model.compile(optimizer=optimizer, loss=loss, sample_weight_mode='temporal')
 
-        #print("REPLICAS: ", strategy.num_replicas_in_sync)
+        print("REPLICAS: ", strategy.num_replicas_in_sync)
+        
 
-        feat_shapes = [layer.get_shape().as_list() for layer in model.source_layers]
-        anchor_ratios = model.aspect_ratios
+        feat_shapes = model.additional_params['feat_shapes']
+        anchor_ratios = model.additional_params['aspect_ratios']
         #print("aspect_ratios: ",anchor_ratios)
-        anchor_sizes = model.minmax_sizes
+        anchor_sizes = model.additional_params['minmax_sizes']
         #print("minmax_sizes: ",anchor_sizes)
-        anchor_steps = model.steps
+        anchor_steps = model.additional_params['steps']
+
         #print("steps: ",anchor_steps)
-        special_ssd_boxes = model.special_ssd_boxes
+        special_ssd_boxes = model.additional_params['special_ssd_boxes']
         #print("special_ssd_boxes: ",special_ssd_boxes)
         anchor_offset = 0.5
 
@@ -245,12 +284,12 @@ def main(_):
         class_labels=config.whitelist_with_fields_label
         val_avt_callback_metrics = AvtMetricsCallback(val_dataset.take(val_steps_per_epoch), 'val', class_labels, batch_size=FLAGS.batch_size)
         #train_avt_callback_metrics = AvtMetricsCallback(train_dataset.take(int(num_batch_per_epoch*0.25)), 'train', dataset_meta.class_labels, dataset_meta.sub_catg_class_labels, BATCH_SIZE)
+        
         append = False
-        #if FLAGS.load_model_epoch >0:
-         #   append = True
+        if FLAGS.load_model_epoch >0:
+           append = True
+
         csv_logger = tf.keras.callbacks.CSVLogger(os.path.join(FLAGS.model_log_dir, 'training.csv'), append=append)
-        model_dir = os.path.join(FLAGS.model_log_dir, 'models')
-        model_str = 'model.{epoch:04d}.tf'
 
 
         model.fit(
@@ -258,7 +297,7 @@ def main(_):
             epochs=epochs,
             verbose=1, 
             shuffle=True,
-            initial_epoch=0,
+            initial_epoch=initial_epoch,
             validation_data=val_dataset, 
             validation_steps=val_steps_per_epoch, 
             steps_per_epoch=steps_per_epoch,
@@ -273,7 +312,7 @@ def main(_):
                                 tensorboard_callback,
                                 val_avt_callback_metrics,
                                 tf.keras.callbacks.ModelCheckpoint(
-                                        filepath=os.path.join(model_dir, model_str),
+                                        filepath=model_path,
                                         monitor='val_average_macro_f1',
                                         mode='max',
                                         save_best_only=True,
