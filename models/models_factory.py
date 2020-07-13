@@ -58,7 +58,7 @@ model_fn_map = {
 #     return networks_obj[name]
 
 
-def get_model(name, num_classes, input_shape=(512, 512, 1), softmax=True):
+def get_model(name, num_classes, input_shape=(512, 512, 3), softmax=True):
     """Returns a KerasModel such as `logits, end_points = (images)`.
 
     Args:

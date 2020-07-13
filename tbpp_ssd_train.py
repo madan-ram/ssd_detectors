@@ -26,7 +26,8 @@ from tensorflow.python.framework.ops import disable_eager_execution
 from preprocessing.preprocessing_factory import get_preprocessing
 from datasets.dataset_factory import get_dataset
 from datasets import ssd_utils
-
+#import keras.backend.tensorflow_backend as K
+import tensorflow.python.keras.backend as K
 # import matplotlib.pyplot as plt
 # import numpy as np
 # import cv2
@@ -36,7 +37,7 @@ tf.keras.backend.clear_session()
 tf.config.set_soft_device_placement(1)
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.DEBUG)
 
-print(tf.executing_eagerly())
+#print(tf.executing_eagerly())
 # =========================================================================== #
 # SSD Network flags.
 # =========================================================================== #
@@ -126,6 +127,20 @@ FLAGS = tf.compat.v1.app.flags.FLAGS
 # Main training routine.
 # =========================================================================== #
 
+
+def set_gpu_mem_config():
+        """Allocate only as much GPU memory as needed for Keras.
+        Based on runtime allocations: it starts out allocating very little memory,
+        and as Sessions get run and more GPU memory is needed, we extend the GPU
+        memory region needed by the TensorFlow process. Note that we do not release
+        memory, since that can lead to even worse memory fragmentation.
+        """
+        gpu_options = tf.compat.v1.GPUOptions(per_process_gpu_memory_fraction=0.70)
+        config = tf.compat.v1.ConfigProto(gpu_options=gpu_options)
+        config.gpu_options.allow_growth = True
+        K.set_session(tf.compat.v1.Session(config=config))
+
+
 def step_decay(epoch):
    initial_lrate = 0.1
    drop = 0.5
@@ -141,10 +156,11 @@ def main(_):
 
     # TODO: remove below freeze
     freeze = []
-    steps_per_epoch=8
-    val_steps_per_epoch=1
+    steps_per_epoch=50
+    val_steps_per_epoch=15
 
     epochs = 1000
+    set_gpu_mem_config()
 
     # Load config and paramaters
     softmax = True
@@ -157,11 +173,11 @@ def main(_):
     try:
         device_name = os.environ['COLAB_TPU_ADDR']
         TPU_ADDRESS = 'grpc://' + device_name
-        print('Found TPU at: {}'.format(TPU_ADDRESS))
+        #print('Found TPU at: {}'.format(TPU_ADDRESS))
         FLAGS.use_tpu = 1
     except KeyError:
         FLAGS.use_tpu = -1
-        print('TPU not found')
+        #print('TPU not found')
 
     logdir = os.path.join(FLAGS.model_log_dir)
     file_writer = tf.summary.create_file_writer(logdir + "/metrics")
@@ -191,23 +207,24 @@ def main(_):
         lr_callback = tf.keras.callbacks.LearningRateScheduler(step_decay)
         tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=logdir)
 
-        optimizer = tf.keras.optimizers.SGD(lr=FLAGS.learning_rate, decay=1e-6, momentum=0.0, nesterov=False)
+        #optimizer = tf.keras.optimizers.SGD(lr=FLAGS.learning_rate, decay=1e-6, momentum=0.0, nesterov=False)
+        optimizer = tf.keras.optimizers.Adam(learning_rate=FLAGS.learning_rate)
 
         loss = SSDFocalLoss()
         # model.compile(optimizer=optimizer, loss=loss, metrics=loss.metrics)
         model.compile(optimizer=optimizer, loss=loss, sample_weight_mode='temporal')
 
-        print("REPLICAS: ", strategy.num_replicas_in_sync)
+        #print("REPLICAS: ", strategy.num_replicas_in_sync)
 
         feat_shapes = [layer.get_shape().as_list() for layer in model.source_layers]
         anchor_ratios = model.aspect_ratios
-        print("aspect_ratios: ",anchor_ratios)
+        #print("aspect_ratios: ",anchor_ratios)
         anchor_sizes = model.minmax_sizes
-        print("minmax_sizes: ",anchor_sizes)
+        #print("minmax_sizes: ",anchor_sizes)
         anchor_steps = model.steps
-        print("steps: ",anchor_steps)
+        #print("steps: ",anchor_steps)
         special_ssd_boxes = model.special_ssd_boxes
-        print("special_ssd_boxes: ",special_ssd_boxes)
+        #print("special_ssd_boxes: ",special_ssd_boxes)
         anchor_offset = 0.5
 
         ssd_anchors = ssd_utils.anchors(
@@ -262,7 +279,7 @@ def main(_):
                                         save_best_only=True,
                                         save_weights_only=False #Done: this is not working need to fix, I want it to be false for easy deployment
                                 ),
-                                tf.keras.callbacks.EarlyStopping(patience=5, monitor="val_loss"),
+                                tf.keras.callbacks.EarlyStopping(patience=20, monitor="val_loss"),
                                 csv_logger]
 
         )

@@ -68,12 +68,6 @@ def ssd_losses(match_threshold=0.5, negative_ratio=3., alpha=1.,
         logits.set_shape((None, None, num_classes))
         glocalisations, gclasses, gscores = targets[:, :, 0:4], targets[:, :, 4:5], targets[:, :, 5]
 
-        print(logits, "=======================")
-        print(localisations, "=======================")
-        print(glocalisations, "=======================")
-        print(gclasses, "=======================")
-        print(gscores, "=======================")
-
         with tf.compat.v1.name_scope(scope, 'ssd_losses'):
             l_cross_pos = []
             l_cross_neg = []
@@ -96,14 +90,12 @@ def ssd_losses(match_threshold=0.5, negative_ratio=3., alpha=1.,
                     no_classes = tf.cast(pmask, tf.int32)
                     predictions = tf.nn.softmax(logits[i])
 
-                    print(predictions.get_shape(), '$$$$$$$$$$$$$$$$$$$$$$$$$$$$$')
 
                     nmask = tf.logical_and(tf.logical_not(pmask),
                                            gscores[i] > -0.5)
 
                     fnmask = tf.cast(nmask, dtype)
 
-                    print(nmask, fnmask, '*******************************')
                     nvalues = tf.compat.v1.where(nmask,
                                        predictions[:, :, :, :, 0],
                                        1. - fnmask)

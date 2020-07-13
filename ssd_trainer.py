@@ -162,13 +162,9 @@ class SSDFocalLoss(tf.keras.losses.Loss):
                 BACKGROUND_CLASS_ID = 0  # Choose the class of interest
                 class_true = tf.argmax(conf_true, axis=-1)
                 neg_mask = K.cast(K.equal(class_true, BACKGROUND_CLASS_ID), tf.bool)
-                print("neg_mask------------------",neg_mask)
                 pos_mask = tf.logical_not(neg_mask)
-                print("pos_mask------------------",pos_mask)
                 pos_mask_float = tf.cast(pos_mask, tf.float32)
-                print("pos_mask_float------------------",pos_mask_float)
                 num_pos = tf.reduce_sum(pos_mask_float)
-                print("num_pos------------------",num_pos)
                 
                 # offset loss
                 loc_true = tf.reshape(y_true[:, :, 0:4], [-1, num_priors, 4])
@@ -180,7 +176,6 @@ class SSDFocalLoss(tf.keras.losses.Loss):
                 
                 # total loss
                 total_loss = conf_loss + self.alpha * loc_loss
-                print("total_loss------------------------>",total_loss)
                 
                 return total_loss
 

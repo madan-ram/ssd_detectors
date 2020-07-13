@@ -124,6 +124,7 @@ def encode_label(ssd_anchors, num_classes):
         print(g_target_boxes)
         # TODO: Need to check this
         g_target_boxes = [tf.reshape(bb, [-1, 4]) for bb in g_target_boxes]
+        print("g_target_boxes :===========================================>",np.asarray(g_target_boxes).shape)
         g_target_boxes = tf.concat(values=g_target_boxes, axis=0)
         tfrecord['boxes'] = g_target_boxes
 
@@ -200,62 +201,5 @@ def get_dataset(tfrecord_path_list, ssd_anchors, num_classes, batch_size=32, pre
     return dataset
 
 if __name__ == '__main__':
-    from preprocessing.preprocessing_factory import get_preprocessing
-
-    softmax = True
-    input_shape=(512, 512, 3)
-    num_classes = 21
-    model_name = 'SSD512_resnet'
-    model = models_factory.get_model(model_name, num_classes, input_shape=input_shape, softmax=softmax)
-    list_of_tfrecord_path = tf.io.gfile.glob("/Users/madanram/SoulOfCoder/SSD-Tensorflow-V2/datasets/VOC2012/tf/avt_2020_v1_*.tfrecord")
-    
-    feat_shapes = [layer.get_shape().as_list() for layer in model.source_layers]
-    anchor_ratios = model.aspect_ratios
-    anchor_sizes = model.minmax_sizes
-    anchor_steps = model.steps
-    special_ssd_boxes = model.special_ssd_boxes
-    anchor_offset = 0.5
-
-    ssd_anchors = ssd_utils.anchors(
-        input_shape, 
-        feat_shapes,
-        anchor_sizes,
-        anchor_ratios,
-        anchor_steps, 
-        anchor_offset
-    )
-    preprocess_fn = get_preprocessing('SSD512_resnet', is_training=True)
-    print(preprocess_fn, '--------------------------')
-    dataset = get_dataset(list_of_tfrecord_path, ssd_anchors, num_classes, preprocess_fn=preprocess_fn, preprocess_fn_args={'out_shape': input_shape})
-
-    print('Iterating over data-sample ........................')
-
-    for tfrecord in dataset:
-        x = tfrecord['input']
-        print(tfrecord['boxes'])
-        break
-        # print(y.shape, '#!#########@!#!#!#!#!##!!#')
-        # print(x.shape, '$$$$$@$!#!#!#!$!!$$!$!!')
-
-        # idx = np.random.randint(32, size=1)
-        # vis_img = np.asarray(x[idx[0]], dtype=np.uint8)
-        # print(vis_img.dtype)
-        # y = np.asarray(y, dtype=np.int32)
-
-        # for prior in y[idx[0]]:
-        #     ymin, xmin, ymax, xmax  = prior[:4]
-        #     classes = prior[4:]
-        #     if classes[0] != 1.0:
-        #         # CLass zero is background
-        #         vis_img = cv2.rectangle(vis_img, (ymin, xmin), (ymax, xmax), (255, 0, 0), thickness=1)
-        # plt.imshow(vis_img)
-        # print(np.sum(x))
-        # plt.show()
-        # break
-
-    # for data in dataset:
-    #     print(data['input'].shape)
-    #     print(data['targets'].numpy().shape)
-    #     print(data['labels'].shape)
-    #     break
+    pass
         
